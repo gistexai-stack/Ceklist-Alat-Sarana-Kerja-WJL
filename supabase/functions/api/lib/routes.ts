@@ -1,3 +1,4 @@
+import { AUTH_ROUTES, resolve } from './auth.ts';
 import { selectAll } from './db.ts';
 import type { ApiResult, RouteFn, Session } from './types.ts';
 import { ALL, DEPTS, err, fail, GUEST, LOGGED, UserError } from './util.ts';
@@ -24,7 +25,7 @@ const publicInfo: RouteFn = async () => {
 // Modul task berikutnya mengganti `fn` entri di sini (mis. ROUTES.login.fn = ...).
 export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   publicInfo: r(null, publicInfo),
-  login: r(null), guestLogin: r(null), logout: r(ALL),
+  login: r(null, AUTH_ROUTES.login), guestLogin: r(null, AUTH_ROUTES.guestLogin), logout: r(ALL, AUTH_ROUTES.logout),
   // Checklist
   worklist: r(['PIC', 'UTILITY']), checklistForm: r(['PIC', 'UTILITY']), submitChecklist: r(['PIC', 'UTILITY']),
   todaySchedules: r(LOGGED), checklistDetail: r(LOGGED),
@@ -34,7 +35,7 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   // Approval
   approvalQueue: r(LOGGED), decide: r(LOGGED),
   // Monitoring
-  dashboard: r(LOGGED), kanban: r(LOGGED), report: r(LOGGED), exportReport: r(LOGGED), lookups: r(LOGGED), changePassword: r(LOGGED),
+  dashboard: r(LOGGED), kanban: r(LOGGED), report: r(LOGGED), exportReport: r(LOGGED), lookups: r(LOGGED), changePassword: r(LOGGED, AUTH_ROUTES.changePassword),
   // Admin
   masterData: r(['ADMIN']), saveAsset: r(['ADMIN']), saveMapping: r(['ADMIN']), savePerson: r(['ADMIN']), saveAccount: r(['ADMIN']),
   resetPassword: r(['ADMIN']), auditLog: r(['ADMIN']), settings: r(['ADMIN']), saveSettings: r(['ADMIN']), saveFonnteToken: r(['ADMIN']),
@@ -44,9 +45,6 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
 /** Fungsi cron (Task 8) didaftarkan di sini: CRON.nama = async () => ... */
 export const CRON: Record<string, () => Promise<unknown>> = {};
 
-/** Pencarian sesi — diganti oleh modul auth (Task 3). Sebelum itu tidak ada sesi yang valid. */
-export const auth: { resolve: (token: string) => Promise<Session | null> } = { resolve: () => Promise.resolve(null) };
-
 // deno-lint-ignore no-explicit-any
 export async function api(token: string | null, action: string, args: Record<string, any> | null): Promise<ApiResult> {
   try {
@@ -54,7 +52,7 @@ export async function api(token: string | null, action: string, args: Record<str
     if (!rt) return fail('Aksi tidak dikenal', 'NOT_FOUND');
     let s: Session | null = null;
     if (rt.roles) {
-      s = token ? await auth.resolve(token) : null;
+      s = token ? await resolve(token) : null;
       if (!s) return fail('Sesi berakhir, silakan masuk lagi', 'AUTH');
       if (!rt.roles.includes(s.role)) return fail('Akses ditolak untuk role ' + s.role, 'FORBIDDEN');
     }
