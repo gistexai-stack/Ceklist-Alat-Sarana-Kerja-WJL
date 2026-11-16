@@ -1,6 +1,6 @@
 // ===== Koneksi ke backend Google Apps Script (pengganti google.script.run di GitHub/Vercel) =====
 // Isi dengan URL Web App Apps Script (Deploy → Manage deployments → URL yang berakhiran /exec).
-const API_URL = 'https://script.google.com/macros/s/ISI_DEPLOYMENT_ID/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzT-yKjvrr41uJCmPMBL2mxhcOw7kwr1EYkaGBMmaXf7aKDTltYIoyt9mUnrKsGD6m2/exec';
 
 // ===== MODE DEMO: backend tiruan di browser + data dummy 14 hari =====
 // Aktif otomatis selama API_URL belum diisi. Login: admin / spv / head, password demo123 (atau masuk sebagai tamu).
