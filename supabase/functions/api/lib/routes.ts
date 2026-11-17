@@ -2,6 +2,8 @@ import { AUTH_ROUTES, resolve } from './auth.ts';
 import { selectAll } from './db.ts';
 import { APPROVAL_ROUTES } from './approval.ts';
 import { MONITORING_ROUTES } from './monitoring.ts';
+import { MASTER_ROUTES } from './master.ts';
+import { NOTIFY_ROUTES } from './notify.ts';
 import { photo } from './photos.ts';
 import { REPAIR_ROUTES } from './repair.ts';
 import { isMasterReady, SCHEDULE_ROUTES } from './schedule.ts';
@@ -37,9 +39,9 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   dashboard: r(LOGGED, MONITORING_ROUTES.dashboard), kanban: r(LOGGED, MONITORING_ROUTES.kanban), report: r(LOGGED, MONITORING_ROUTES.report),
   exportReport: r(LOGGED, MONITORING_ROUTES.exportReport), lookups: r(LOGGED, MONITORING_ROUTES.lookups), changePassword: r(LOGGED, AUTH_ROUTES.changePassword),
   // Admin
-  masterData: r(['ADMIN']), saveAsset: r(['ADMIN']), saveMapping: r(['ADMIN']), savePerson: r(['ADMIN']), saveAccount: r(['ADMIN']),
-  resetPassword: r(['ADMIN']), auditLog: r(['ADMIN']), settings: r(['ADMIN']), saveSettings: r(['ADMIN']), saveFonnteToken: r(['ADMIN']),
-  testFonnte: r(['ADMIN']), notifLog: r(['ADMIN']), retryNotif: r(['ADMIN']), backupNow: r(['ADMIN']), backupLog: r(['ADMIN']),
+  masterData: r(['ADMIN'], MASTER_ROUTES.masterData), saveAsset: r(['ADMIN'], MASTER_ROUTES.saveAsset), saveMapping: r(['ADMIN'], MASTER_ROUTES.saveMapping), savePerson: r(['ADMIN'], MASTER_ROUTES.savePerson), saveAccount: r(['ADMIN'], MASTER_ROUTES.saveAccount),
+  resetPassword: r(['ADMIN'], MASTER_ROUTES.resetPassword), auditLog: r(['ADMIN'], MASTER_ROUTES.auditLog), settings: r(['ADMIN'], NOTIFY_ROUTES.settings), saveSettings: r(['ADMIN'], NOTIFY_ROUTES.saveSettings), saveFonnteToken: r(['ADMIN'], NOTIFY_ROUTES.saveFonnteToken),
+  testFonnte: r(['ADMIN'], NOTIFY_ROUTES.testFonnte), notifLog: r(['ADMIN'], NOTIFY_ROUTES.notifLog), retryNotif: r(['ADMIN'], NOTIFY_ROUTES.retryNotif), backupNow: r(['ADMIN']), backupLog: r(['ADMIN']),
 };
 
 /** Fungsi cron (Task 8) didaftarkan di sini: CRON.nama = async () => ... */
