@@ -190,7 +190,9 @@ function migrasiJalankan() {
       if (st.p % 10 === 9) mig_save_(st);
     }
 
-    if (mig_prop_('MIG_FINAL') === 'TRUE') {
+    if (mig_prop_('MIG_FINAL') === 'TRUE' && st.failedN > 0) {
+      Logger.log('!!! PERINGATAN: ' + st.failedN + ' foto GAGAL, MIGRATED_AT TIDAK ditulis. Perbaiki lalu jalankan migrasiJalankan lagi, atau putuskan sendiri.');
+    } else if (mig_prop_('MIG_FINAL') === 'TRUE') {
       const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
       mig_sb_('post', '/rest/v1/system_settings?on_conflict=setting_key', {
         contentType: 'application/json', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -217,10 +219,18 @@ function mig_uploadPhoto_(id) {
   } else {
     const link = Drive.Files.get(id, { fields: 'thumbnailLink' }).thumbnailLink;
     if (!link) throw new Error('tidak ada thumbnail untuk dikecilkan');
-    const r = UrlFetchApp.fetch(link.replace(/=s\d+$/, '=s1280'), { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    const suffix = /=s\d+(-[A-Za-z0-9-]*)?$/;
+    let url;
+    if (suffix.test(link)) url = link.replace(suffix, '=s1280');
+    else if (link.indexOf('?') < 0 && link.indexOf('=') < 0) url = link + '=s1280';
+    else throw new Error('format thumbnailLink tidak dikenal, ukuran tidak bisa diubah');
+    const r = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
     if (r.getResponseCode() !== 200) throw new Error('thumbnail HTTP ' + r.getResponseCode());
     const b = r.getBlob();
     bytes = b.getBytes(); type = b.getContentType();
+    if (!/^image\//.test(type || '')) throw new Error('hasil thumbnail bukan gambar (' + type + ')');
+    if (bytes.length > MIG_PHOTO_MAX) throw new Error('thumbnail masih > 1 MB (' + bytes.length + ' byte)');
+    if (bytes.length < 20 * 1024) throw new Error('thumbnail terlalu kecil (' + bytes.length + ' byte), kemungkinan bukan 1280 px');
   }
   mig_sb_('post', '/storage/v1/object/photos/' + encodeURIComponent(id), { contentType: type || 'image/jpeg', payload: bytes, headers: { 'x-upsert': 'true' } });
 }

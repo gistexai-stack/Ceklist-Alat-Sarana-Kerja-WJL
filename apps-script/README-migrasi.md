@@ -25,16 +25,16 @@ Pilih fungsi `migrasiHitung` di menu atas, klik **Run**, lalu buka **Execution l
 - baris **KESIMPULAN: MUAT** atau **TIDAK MUAT**. Jika TIDAK MUAT, berhenti dan hubungi pengembang.
 
 ## 4. Uji coba: `migrasiJalankan` lalu `migrasiLaporan`
-1. Jalankan `migrasiJalankan`. Bila data banyak, proses berhenti sekitar 5 menit lalu **lanjut sendiri** tiap 1 menit lewat trigger. Tunggu sampai log berisi **SELESAI**.
+1. Jalankan `migrasiJalankan`. Bila data banyak, proses berhenti sekitar 5 menit lalu **lanjut sendiri** tiap 1 menit lewat trigger. Tunggu sampai log berisi **SELESAI**. Bila muncul error, perbaiki penyebabnya lalu jalankan `migrasiJalankan` lagi; skrip akan melanjutkan dari posisi terakhir.
 2. Jalankan `migrasiLaporan`: semua tabel harus **COCOK** dan "Foto gagal: 0". Bila ada foto gagal, daftar ID-nya muncul di log; kirim ke pengembang.
 3. Uji coba ini AMAN diulang: data yang sama ditimpa, bukan digandakan. Uji coba **tidak** menulis penanda `MIGRATED_AT`.
 
 ## 5. Hari cutover (`MIG_FINAL`)
 Pada hari pindah resmi (setelah aplikasi lama berhenti dipakai):
 1. Tambah Script Property `MIG_FINAL` = `TRUE`.
-2. Jalankan `migrasiJalankan` lagi sampai **SELESAI**, lalu `migrasiLaporan`.
+2. Jalankan `migrasiJalankan` lagi sampai **SELESAI**, lalu `migrasiLaporan`. Pastikan "Foto gagal: 0" di laporan sebelum cutover.
 
-Hanya bila `MIG_FINAL` = `TRUE`, migrasi menulis `MIGRATED_AT` ke pengaturan sistem Supabase sebagai tanda migrasi final. Jangan set `MIG_FINAL` sebelum hari cutover.
+Hanya bila `MIG_FINAL` = `TRUE` dan tidak ada foto gagal, migrasi menulis `MIGRATED_AT` ke pengaturan sistem Supabase sebagai tanda migrasi final. Jangan set `MIG_FINAL` sebelum hari cutover.
 
 ## 6. Bersihkan
 Setelah semuanya benar, jalankan `migrasiBersihkan`. Ini menghapus `SB_SERVICE_KEY`, `MIG_STATE`, `MIG_FINAL`, dan trigger migrasi. Setelah itu, `Migrasi.gs` boleh dihapus dari proyek.
