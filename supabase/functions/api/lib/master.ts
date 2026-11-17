@@ -3,7 +3,7 @@ import { db, selectAll, updateWhere, upsertRows } from './db.ts';
 import { ensureSchedules, isMasterReady } from './schedule.ts';
 import { audit, setSetting, settings } from './settings.ts';
 import type { RouteFn } from './types.ts';
-import { clean, DEPTS, err, GUEST, ids, LOGGED, num, pad, ts } from './util.ts';
+import { clean, DEPTS, err, UserError, GUEST, ids, LOGGED, num, pad, ts } from './util.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -81,8 +81,15 @@ const saveAsset: RouteFn = async (s, a) => {
     await insertNew('master_checkpoint', (n) => add.map((c, i) => ({ ...c, checkpoint_id: 'CHK-' + pad(n + i + 1, 3), asset_id: row!.asset_id })));
   } catch (e) {
     if (isNew) { // tanpa transaksi: batalkan alat baru agar tidak tersisa alat aktif tanpa checkpoint
-      await db.from('master_checkpoint').delete().eq('asset_id', row.asset_id);
-      await db.from('master_asset').delete().eq('asset_id', row.asset_id);
+      const failed = [
+        (await db.from('master_checkpoint').delete().eq('asset_id', row.asset_id)).error,
+        (await db.from('master_asset').delete().eq('asset_id', row.asset_id)).error,
+      ].filter(Boolean);
+      if (failed.length) {
+        console.error('rollback asset ' + row.asset_id + ' gagal: ' + failed.map((x) => x!.message).join('; '));
+        const note = ' (Alat baru ' + row.asset_id + ' mungkin perlu dibersihkan manual oleh Admin)';
+        throw e instanceof UserError ? err(e.message + note, e.code) : new Error(String(e) + note);
+      }
     }
     throw e;
   }
