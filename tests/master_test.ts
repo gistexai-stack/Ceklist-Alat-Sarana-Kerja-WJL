@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertNotEquals } from 'jsr:@std/assert@1';
 import { BASE_FIXTURE, call, PASSWORD, seed, svc } from './api_helpers.ts';
 import { notify } from '../supabase/functions/api/lib/notify.ts';
+import { EDITABLE_SETTINGS } from '../supabase/functions/api/lib/settings.ts';
 
 const rows = async (t: string) => (await svc.from(t).select('*')).data as any[];
 const login = async (u: string, p = PASSWORD) => (await call(null, 'login', { username: u, password: p })).data?.token as string;
@@ -83,7 +84,7 @@ Deno.test('saveFonnteToken + settings: token tersamar, Vault terisi, dipulihkan'
     assertEquals(s.token_masked, '••••••••3456');
     assert(!JSON.stringify(s).includes('tok123456'));
     assert(/^https:\/\/supabase\.com\/dashboard\/project\/[a-z0-9]+\/storage\/buckets$/.test(s.root_folder_url));
-    assertEquals(Object.keys(s.values).length, 17);
+    assertEquals(Object.keys(s.values).length, EDITABLE_SETTINGS.length);
     assertEquals((await call(admin, 'saveSettings', { values: { PHOTO_MAX_KB: '10' } })).message, 'Batas foto 200–20480 KB');
     await call(admin, 'saveSettings', { values: { NOTIF_NOK: 'x', NOK_FORMAT: 'ASSET', ACTIVATED_AT: 'hack' } });
     const s2 = (await call(admin, 'settings')).data;
@@ -109,4 +110,21 @@ Deno.test('notify: WA_GROUPS kosong -> FAILED "Group ID belum diatur"; event_id 
   const rt = await call(admin, 'retryNotif', {});
   assertEquals(rt.data, { tried: 1, sent: 0 });
   assertEquals((await rows('notification_log'))[0].attempt_count, '2');
+});
+
+Deno.test('pembuatan bersamaan: dua savePerson -> keduanya ada, ID berbeda, tidak ada yang tertimpa', async () => {
+  await seed(BASE_FIXTURE);
+  const admin = await login('admin');
+  const res = await Promise.all([call(admin, 'savePerson', { display_name: 'Satu', role_type: 'UTILITY' }), call(admin, 'savePerson', { display_name: 'Dua', role_type: 'UTILITY' })]);
+  const names = (await rows('master_person')).map((p) => p.display_name);
+  for (const [i, n] of ['SATU', 'DUA'].entries()) assert(res[i].success ? names.includes(n) : res[i].code === 'CONFLICT');
+  assert(res.some((r) => r.success));
+  assertEquals(new Set(res.filter((r) => r.success).map((r) => r.data.person_id)).size, res.filter((r) => r.success).length);
+  assertEquals(names.length, 4 + res.filter((r) => r.success).length);
+});
+
+Deno.test('notify bersamaan dengan event_id sama -> tepat 1 baris', async () => {
+  await seed(BASE_FIXTURE);
+  await Promise.all([1, 2, 3].map(() => notify('NOK', 'EV-RACE', { alat: 'A' })));
+  assertEquals((await rows('notification_log')).length, 1);
 });

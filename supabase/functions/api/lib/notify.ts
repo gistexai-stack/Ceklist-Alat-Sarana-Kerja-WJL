@@ -36,7 +36,8 @@ export async function notify(type: string, eventId: string, vars: Record<string,
     const msg = fill(st[tplKey || ('TPL_' + type)], vars);
     const row = { notification_id: uid('NTF'), event_id: eventId, event_type: type, target_group: st.WA_GROUPS, payload_summary: msg.slice(0, 300).replace(/\n/g, ' | '),
       message: msg, status: 'PENDING', provider_response: '', attempt_count: '0', created_at: ts(), sent_at: '' };
-    await insertRows('notification_log', [row]);
+    const { error } = await db.from('notification_log').insert(row);
+    if (error) { if (error.code === '23505') return; throw new Error('insert notification_log: ' + error.message); } // 23505 = event sudah diproses
     await sendRow(row);
   } catch (e) { console.error('notify ' + eventId + ': ' + e); }
 }
@@ -101,7 +102,7 @@ const notifLog: RouteFn = async () => {
 };
 
 const retryNotif: RouteFn = async (_s, a) => {
-  const rows = (await selectAll('notification_log', (q) => q.eq('status', 'FAILED'))).filter((r) =>
+  const rows = (await selectAll('notification_log', (q) => q.eq('status', 'FAILED'))).sort((a, b) => a.created_at.localeCompare(b.created_at)).filter((r) =>
     r.message && (a.notification_id ? r.notification_id === a.notification_id : num(r.attempt_count) < 5));
   const groups = (await settings()).WA_GROUPS;
   let ok = 0;

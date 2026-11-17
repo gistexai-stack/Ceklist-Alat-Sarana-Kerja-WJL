@@ -13,6 +13,16 @@ export async function safeAudit(...a: Parameters<typeof audit>): Promise<void> {
   try { await audit(...a); } catch (e) { console.error('audit ' + a[1] + ': ' + e); }
 }
 const regen = () => ensureSchedules(true).catch((e) => console.error('ensureSchedules: ' + e));
+/** Insert baris baru dengan id count+1; tabrakan PK (23505, pembuat lain bersamaan) dihitung ulang, maks 3x. */
+async function insertNew(table: string, mk: (count: number) => Row[]): Promise<Row[]> {
+  for (let i = 0; i < 3; i++) {
+    const rows = mk((await selectAll(table)).length);
+    const { error } = await db.from(table).insert(rows);
+    if (!error) return rows;
+    if (error.code !== '23505') throw new Error('insert ' + table + ': ' + error.message);
+  }
+  throw err('Terjadi bentrokan ID saat menyimpan. Coba lagi.', 'CONFLICT');
+}
 const isFalse = (v: unknown) => v === false || v === 'FALSE';
 
 const masterData: RouteFn = async () => {
@@ -42,7 +52,7 @@ const saveAsset: RouteFn = async (s, a) => {
   let row: Row | undefined = x.asset_id ? A.find((r) => r.asset_id === x.asset_id) : undefined;
   const before = row ? clean(row) : null;
   const isNew = !row;
-  if (!row) row = { asset_id: 'AST-' + pad(A.length + 1, 3), source_no: '', created_at: nowStr, activated_at: nowStr };
+  if (!row) row = { source_no: '', created_at: nowStr, activated_at: nowStr };
   const wasActive = row.active === 'TRUE';
   Object.assign(row, { asset_name: name, active: isFalse(x.active) ? 'FALSE' : 'TRUE', schedule_type: x.schedule_type,
     pic_group: String(x.pic_group || '').trim(), checker_role: x.checker_role, pic_ids: x.checker_role === 'PIC' ? picIds.join(',') : '', updated_at: nowStr });
@@ -60,10 +70,12 @@ const saveAsset: RouteFn = async (s, a) => {
       repair_department: dept, active: act, updated_at: nowStr };
     const ex = c.checkpoint_id ? C.find((r) => r.checkpoint_id === c.checkpoint_id && r.asset_id === row!.asset_id) : null;
     if (ex) upd.push({ ...ex, ...vals });
-    else add.push({ checkpoint_id: 'CHK-' + pad(C.length + add.length + 1, 3), asset_id: row!.asset_id, created_at: nowStr, ...vals });
+    else add.push({ created_at: nowStr, ...vals });
   });
-  await upsertRows('master_asset', [row]);
-  await upsertRows('master_checkpoint', [...upd, ...add]);
+  if (isNew) row = (await insertNew('master_asset', (n) => [{ ...row, asset_id: 'AST-' + pad(n + 1, 3) }]))[0];
+  else await upsertRows('master_asset', [row]);
+  await upsertRows('master_checkpoint', upd);
+  await insertNew('master_checkpoint', (n) => add.map((c, i) => ({ ...c, checkpoint_id: 'CHK-' + pad(n + i + 1, 3), asset_id: row!.asset_id })));
   if (wasActive && row.active === 'FALSE') { // batalkan jadwal terbuka alat yang dinonaktifkan
     const { error } = await db.from('schedule').update({ status: 'BATAL', processed_at: nowStr }).match({ asset_id: row.asset_id, status: 'OPEN' });
     if (error) throw new Error('cancel schedule: ' + error.message);
@@ -110,9 +122,10 @@ const savePerson: RouteFn = async (s, a) => {
       throw err('Orang ini masih menjadi PIC alat. Lepaskan dari alat sebelum mengganti role.');
     p = { ...p, display_name: name, role_type: a.role_type, active: a.active === false ? 'FALSE' : 'TRUE', updated_at: nowStr };
   } else {
-    p = { person_id: 'PRS-' + pad(T.length + 1, 3), display_name: name, role_type: a.role_type, active: 'TRUE', created_at: nowStr, updated_at: nowStr };
+    const base = { display_name: name, role_type: a.role_type, active: 'TRUE', created_at: nowStr, updated_at: nowStr };
+    p = (await insertNew('master_person', (n) => [{ person_id: 'PRS-' + pad(n + 1, 3), ...base }]))[0];
   }
-  await upsertRows('master_person', [p]);
+  if (before) await upsertRows('master_person', [p]);
   await safeAudit(s, before ? 'UPDATE_PERSON' : 'CREATE_PERSON', 'MASTER_PERSON', p.person_id, before, clean(p));
   return clean(p);
 };
@@ -133,10 +146,10 @@ const saveAccount: RouteFn = async (s, a) => {
   } else {
     if (String(a.password || '').length < 6) throw err('Password awal minimal 6 karakter');
     const salt = crypto.randomUUID();
-    acc = { account_id: 'ACC-' + pad(T.length + 1, 3), username, display_name, role: a.role, password_hash: await hash(a.password, salt), salt,
-      active: 'TRUE', last_login_at: '', created_at: nowStr, updated_at: nowStr };
+    const base = { username, display_name, role: a.role, password_hash: await hash(a.password, salt), salt, active: 'TRUE', last_login_at: '', created_at: nowStr, updated_at: nowStr };
+    acc = (await insertNew('master_account', (n) => [{ account_id: 'ACC-' + pad(n + 1, 3), ...base }]))[0];
   }
-  await upsertRows('master_account', [acc]);
+  if (before) await upsertRows('master_account', [acc]);
   await safeAudit(s, before ? 'UPDATE_ACCOUNT' : 'CREATE_ACCOUNT', 'MASTER_ACCOUNT', acc.account_id, before, clean(acc));
   return clean(acc);
 };
