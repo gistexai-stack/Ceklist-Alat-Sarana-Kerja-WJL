@@ -1,359 +1,8 @@
-// ===== Koneksi ke backend Google Apps Script (pengganti google.script.run di GitHub/Vercel) =====
-// Isi dengan URL Web App Apps Script (Deploy → Manage deployments → URL yang berakhiran /exec).
-const API_URL = 'https://script.google.com/macros/s/AKfycbzT-yKjvrr41uJCmPMBL2mxhcOw7kwr1EYkaGBMmaXf7aKDTltYIoyt9mUnrKsGD6m2/exec';
+// ===== Koneksi ke backend Supabase Edge Function (pengganti google.script.run) =====
+const API_URL = 'https://liijxffmljyboznmgqjq.supabase.co/functions/v1/api';
 
-// ===== MODE DEMO: backend tiruan di browser + data dummy 14 hari =====
-// Aktif otomatis selama API_URL belum diisi. Login: admin / spv / head, password demo123 (atau masuk sebagai tamu).
-// ponytail: data hanya di memori — reload halaman = data dummy dibuat ulang. Isi API_URL untuk backend asli.
-if (/ISI_DEPLOYMENT_ID/.test(API_URL)) (function () {
-  let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
-  const pick = a => a[Math.floor(rnd() * a.length)];
-  const pad = n => String(n).padStart(2, '0');
-  const ds = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  const ts = d => ds(d) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':00';
-  const P = s => new Date(s.length === 10 ? s + 'T00:00:00' : s.replace(' ', 'T'));
-  const addH = (s, n) => ts(new Date(P(s).getTime() + n * 36e5));
-  const addD = (d, n) => { const x = P(d); x.setDate(x.getDate() + n); return ds(x); };
-  const hrs = (a, b) => Math.round((P(b) - P(a)) / 36e5 * 10) / 10;
-  const now = () => ts(new Date());
-  const later = (a, b) => (a > b ? a : b);
-  const uniq = a => [...new Set(a.filter(Boolean))];
-  const avg = a => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : null);
-  const opInfo = () => { const n = new Date(), h = n.getHours(); return { op: h < 7 ? addD(ds(n), -1) : ds(n), shift: h >= 7 && h < 15 ? '1' : h >= 15 && h < 23 ? '2' : '3' }; };
-  const fail = m => { throw new Error(m); };
-
-  // ---------- master ----------
-  const PERS = { PIC: ['Asep Saepudin', 'Dedi Kurniawan', 'Rina Marlina', 'Yayan Sopian', 'Siti Nurhaliza', 'Ujang Rahmat'], MAINTENANCE: ['Agus Setiawan', 'Bambang Hermawan', 'Cecep Supriatna', 'Dodi Firmansyah'], UTILITY: ['Eko Prasetyo', 'Fajar Nugraha', 'Gilang Ramadhan'] };
-  const M = { assets: [], persons: [], accounts: [] };
-  Object.keys(PERS).forEach(r => PERS[r].forEach(n => M.persons.push({ person_id: 'P' + pad(M.persons.length + 1).padStart(3, '0'), display_name: n, role_type: r, active: 'TRUE' })));
-  M.accounts = [['admin', 'Administrator', 'ADMIN'], ['spv', 'Hendra Gunawan', 'SPV'], ['head', 'Wawan Setiadi', 'HEAD']].map((a, i) => ({ account_id: 'AC' + (i + 1), username: a[0], display_name: a[1], role: a[2], active: 'TRUE', last_login_at: '' }));
-  const PW = { AC1: 'demo123', AC2: 'demo123', AC3: 'demo123' };
-  const ASSETS = [
-    ['Mesin WJL Tsudakoma Line 1', 'DAILY', 'PIC', '', 'P001,P002', [['Nozzle utama', 'MAINTENANCE'], ['Selang & sambungan air', 'UTILITY'], ['Sensor pakan (feeler)', 'MAINTENANCE'], ['Tension benang lusi', 'PIC']]],
-    ['Mesin WJL Tsudakoma Line 2', 'DAILY', 'PIC', '', 'P003', [['Nozzle utama', 'MAINTENANCE'], ['Selang & sambungan air', 'UTILITY'], ['Pisau potong pakan', 'MAINTENANCE'], ['Kebersihan area mesin', 'PIC']]],
-    ['Roda Doffing Line 1', 'SHIFT', 'PIC', 'RODA DOFFING', 'P004,P005,P006', [['Roda & bearing', 'MAINTENANCE'], ['Rem roda', 'MAINTENANCE'], ['Rangka troli', 'MAINTENANCE']]],
-    ['Roda Doffing Line 2', 'SHIFT', 'PIC', 'RODA DOFFING', 'P004,P005,P006', [['Roda & bearing', 'MAINTENANCE'], ['Rem roda', 'MAINTENANCE'], ['Rangka troli', 'MAINTENANCE']]],
-    ['Kompresor Udara Atlas', 'DAILY', 'UTILITY', '', '', [['Tekanan angin (bar)', 'UTILITY'], ['Oli kompresor', 'UTILITY'], ['Filter udara', 'UTILITY']]],
-    ['Pompa Air Bersih WJL', 'DAILY', 'UTILITY', '', '', [['Tekanan pompa', 'UTILITY'], ['Kebocoran pipa', 'UTILITY'], ['Panel listrik pompa', 'UTILITY']]],
-    ['Mesin Sizing', 'DAILY', 'PIC', '', 'P001,P003', [['Suhu silinder', 'MAINTENANCE'], ['Bak kanji', 'PIC'], ['Rol press', 'MAINTENANCE'], ['Steam trap', 'UTILITY']]],
-    ['Kereta Beam', 'DAILY', 'PIC', '', 'P002', [['Roda kereta', 'MAINTENANCE'], ['Pengunci beam', 'MAINTENANCE']]]
-  ];
-  let nCp = 0;
-  ASSETS.forEach((a, i) => M.assets.push({ asset_id: 'A' + String(i + 1).padStart(3, '0'), source_no: String(i + 1), asset_name: a[0], schedule_type: a[1], checker_role: a[2], pic_group: a[3], pic_ids: a[4], active: 'TRUE',
-    checkpoints: a[5].map((c, j) => ({ checkpoint_id: 'CP' + String(++nCp).padStart(3, '0'), display_order: j + 1, point_name: c[0], target_label: j % 2 ? '1 MENIT' : '2 MENIT', repair_department: c[1], active: 'TRUE' })) }));
-  const asset = id => M.assets.find(a => a.asset_id === id) || fail('Alat tidak ditemukan');
-  const cps = a => a.checkpoints.filter(c => c.active === 'TRUE');
-  const picIds = a => (a.checker_role === 'UTILITY' ? [] : a.pic_ids.split(',').filter(String));
-  const personsFor = a => (a.checker_role === 'UTILITY' ? M.persons.filter(p => p.role_type === 'UTILITY') : picIds(a).map(id => M.persons.find(p => p.person_id === id)).filter(Boolean));
-  const ready = () => { const all = M.assets.filter(a => a.active === 'TRUE').flatMap(cps); const un = all.filter(c => !c.repair_department).length; return { ok: un === 0, unmapped: un, total: all.length }; };
-
-  // ---------- data transaksi ----------
-  const D = { sch: [], ck: {}, cases: [], audit: [], notif: [], backup: [], photos: {} };
-  const SET = { WA_GROUPS: '120363000000000000@g.us', NOTIF_NOK: 'TRUE', NOTIF_SPV: 'TRUE', NOTIF_HEAD: 'TRUE', NOTIF_REJECT: 'TRUE', NOTIF_DONE: 'TRUE', NOTIF_REMINDER: 'FALSE', NOK_FORMAT: 'POINT', PHOTO_MAX_KB: '1500', BACKUP_RETENTION_DAYS: '30',
-    TPL_NOK: '⚠️ NO OK: {alat} — {checkpoint}\nPIC: {pic} · {waktu}\nKasus: {kasus} ({departemen})\n{link}', TPL_NOK_ASSET: '⚠️ NO OK {alat}\n{daftar}\n{link}', TPL_SPV: '🔧 {kasus} {alat} selesai diperbaiki, menunggu SPV.\n{link}', TPL_HEAD: '✅ SPV {approver} menyetujui {kasus}, menunggu Head.\n{link}', TPL_REJECT: '❌ {kasus} ditolak {approver}: {catatan}\n{link}', TPL_DONE: '🎉 {kasus} {alat} selesai.', TPL_REMINDER: '⏰ Perbaikan belum selesai:\n{daftar}' };
-  let TOKEN = '', nCase = 0, nCk = 0, nItem = 0, nPh = 0;
-  const photo = v => { const id = 'PH' + String(++nPh).padStart(5, '0'); D.photos[id] = v; return id; };
-  const notif = (type, sum, at) => { const ok = rnd() > 0.08; D.notif.push({ created_at: at, event_type: type, payload_summary: sum, status: ok ? 'SENT' : 'FAILED', attempt_count: ok ? 1 : 3, provider_response: ok ? '{"status":true,"detail":"success! message in queue"}' : '{"status":false,"reason":"device disconnected"}' }); };
-  const audit = (me, action, type, id, reason, after) => D.audit.push({ created_at: now(), actor_name: me ? me.name : 'SYSTEM', actor_type: me ? me.type : 'SYSTEM', action, entity_type: type, entity_id: id, reason: reason || '', after_json: after ? JSON.stringify(after) : '' });
-  const NOTES = ['Bocor di sambungan', 'Bunyi kasar saat berputar', 'Baut kendor', 'Sensor tidak merespon', 'Aus, perlu ganti', 'Kotor / tersumbat', ''];
-  const ACTIONS = ['Ganti seal & kencangkan sambungan', 'Ganti bearing baru', 'Kencangkan baut lalu uji coba', 'Bersihkan & kalibrasi sensor', 'Ganti part aus dengan baru', 'Bersihkan saluran dan uji aliran'];
-  const log = (c, ev, actor, at, note, act) => { c.logs.push({ created_at: at, actor_name: actor, event: ev, note: note || '', repair_action: act || '' }); c.last_activity_at = at; };
-  const recompute = c => {
-    if (c.status !== 'PERLU_PERBAIKAN' && c.status !== 'SEDANG_DIPERBAIKI') return;
-    const its = c.items;
-    c.status = its.every(i => i.status === 'DONE') ? 'MENUNGGU_SPV' : its.some(i => i.status === 'CLAIMED' || i.status === 'DONE') ? 'SEDANG_DIPERBAIKI' : 'PERLU_PERBAIKAN';
-  };
-  const reopenItem = i => Object.assign(i, { status: 'OPEN', claimed_by: '', claimed_by_name_snapshot: '', started_at: '', completed_at: '', repair_action: '', after_photo_file_id: '' });
-  function addNok(a, cp, at, checker, note, ph) {
-    let c = D.cases.find(x => x.asset_id === a.asset_id && x.status !== 'SELESAI');
-    if (!c) {
-      c = { case_id: 'CASE-' + String(++nCase).padStart(4, '0'), asset_id: a.asset_id, asset_name_snapshot: a.asset_name, status: 'PERLU_PERBAIKAN', cycle_no: 1, rework_count: 0, first_finding_at: at, closed_at: '', last_activity_at: at, base: at, speed: 0.6 + rnd() * 3.5, flaky: rnd() < 0.25, items: [], logs: [], approvals: [] };
-      D.cases.push(c);
-    } else if (/MENUNGGU/.test(c.status)) {
-      c.approvals.forEach(p => { if (p.cycle_no === c.cycle_no) p.valid = false; });
-      c.cycle_no++; c.base = at; c.status = 'PERLU_PERBAIKAN';
-      log(c, 'REOPEN_NOK', checker, at, cp.point_name);
-    }
-    let it = c.items.find(i => i.checkpoint_id === cp.checkpoint_id);
-    if (!it) c.items.push(it = reopenItem({ case_item_id: 'ITM-' + String(++nItem).padStart(5, '0'), checkpoint_id: cp.checkpoint_id, point_name_snapshot: cp.point_name, department: cp.repair_department, occurrence_count: 0, rework_count: 0, last_reject_note: '', occurrences: [] }));
-    else if (it.status === 'DONE') { reopenItem(it); log(c, 'REOPEN_NOK', checker, at, cp.point_name); }
-    it.occurrence_count++; it.occurrences.push({ photo: ph, recorded_at: at, checker, note });
-    c.last_activity_at = at; recompute(c);
-    notif('NOK', a.asset_name + ' — ' + cp.point_name + ' (' + c.case_id + ')', at);
-    return c;
-  }
-  const claim = (c, i, pid, name, at) => { Object.assign(i, { status: 'CLAIMED', claimed_by: pid, claimed_by_name_snapshot: name, started_at: at }); log(c, 'CLAIM', name, at, i.point_name_snapshot); recompute(c); };
-  const release = (c, i, actor, at) => { reopenItem(i); log(c, 'RELEASE', actor, at, i.point_name_snapshot); recompute(c); };
-  const complete = (c, i, act, ph, at) => {
-    Object.assign(i, { status: 'DONE', repair_action: act, completed_at: at, after_photo_file_id: ph });
-    log(c, 'DONE', i.claimed_by_name_snapshot, at, i.point_name_snapshot, act); recompute(c);
-    if (c.status === 'MENUNGGU_SPV') notif('SPV', c.case_id + ' ' + c.asset_name_snapshot + ' menunggu SPV', at);
-  };
-  function decide(c, level, dec, who, at, note, ids) {
-    c.approvals.push({ level, decision: dec, approver_name: who.name, approver_role: who.role, decided_at: at, cycle_no: c.cycle_no, valid: true, note: note || '' });
-    c.last_activity_at = at;
-    if (dec === 'APPROVE') {
-      if (level === 'SPV') { c.status = 'MENUNGGU_HEAD'; notif('HEAD', c.case_id + ' disetujui SPV ' + who.name, at); }
-      else { c.status = 'SELESAI'; c.closed_at = at; notif('DONE', c.case_id + ' ' + c.asset_name_snapshot + ' selesai', at); }
-      return;
-    }
-    c.approvals.forEach(p => { if (p.cycle_no === c.cycle_no && p.decision === 'APPROVE') p.valid = false; });
-    c.items.filter(i => ids.includes(i.case_item_id)).forEach(i => { reopenItem(i); i.rework_count++; i.last_reject_note = note; log(c, 'REOPEN_REJECT', who.name, at, i.point_name_snapshot + ' — ' + note); });
-    c.rework_count++; c.cycle_no++; c.base = at; c.status = 'PERLU_PERBAIKAN'; recompute(c);
-    notif('REJECT', c.case_id + ' ditolak ' + who.name + ': ' + note, at);
-  }
-  const techFor = dept => pick(M.persons.filter(p => p.role_type === dept));
-  const ACC = r => { const a = M.accounts.find(x => x.role === r); return { name: a.display_name, role: r }; };
-  // simulasi alur kasus berdasar umur (hanya untuk data dummy awal)
-  function advance(c, at) {
-    for (let g = 0; g < 8 && c.status !== 'SELESAI'; g++) {
-      const age = hrs(c.base, at) / c.speed, t = s => addH(c.base, s * c.speed);
-      if (c.status === 'PERLU_PERBAIKAN' && age >= 6) c.items.filter(i => i.status === 'OPEN').forEach(i => { const p = techFor(i.department); claim(c, i, p.person_id, p.display_name, later(t(6), i.occurrences[i.occurrences.length - 1].recorded_at)); });
-      else if (c.status === 'SEDANG_DIPERBAIKI' && age >= 26) {
-        c.items.filter(i => i.status === 'OPEN').forEach(i => { const p = techFor(i.department); claim(c, i, p.person_id, p.display_name, later(t(20), i.occurrences[i.occurrences.length - 1].recorded_at)); });
-        c.items.filter(i => i.status === 'CLAIMED').forEach(i => complete(c, i, pick(ACTIONS), photo([i.point_name_snapshot + ' — sesudah', '#1E7A4F']), later(t(26), addH(i.started_at, 2))));
-      } else if (c.status === 'MENUNGGU_SPV' && age >= 34) {
-        if (c.flaky && c.cycle_no === 1) decide(c, 'SPV', 'REJECT', ACC('SPV'), t(34), 'Masih belum normal, mohon dicek ulang', [c.items[0].case_item_id]);
-        else decide(c, 'SPV', 'APPROVE', ACC('SPV'), t(34), '');
-      } else if (c.status === 'MENUNGGU_HEAD' && age >= 44) decide(c, 'HEAD', 'APPROVE', ACC('HEAD'), t(44), 'OK');
-      else return;
-    }
-  }
-  const codes = a => (a.schedule_type === 'SHIFT' ? ['1', '2', '3'] : ['']);
-  const win = (d, code) => ({ '': [d + ' 07:00:00', addD(d, 1) + ' 07:00:00'], 1: [d + ' 07:00:00', d + ' 15:00:00'], 2: [d + ' 15:00:00', d + ' 23:00:00'], 3: [d + ' 23:00:00', addD(d, 1) + ' 07:00:00'] })[code];
-  function submitCk(s, results, checker, at) {
-    const a = asset(s.asset_id), id = 'CL-' + String(++nCk).padStart(5, '0');
-    const ck = { checklist_id: id, schedule_id: s.schedule_id, asset_id: a.asset_id, asset_name_snapshot: a.asset_name, operational_date: s.date, shift_code: s.shift_code, checker_name_snapshot: checker, submitted_at: at, details: [] };
-    let nok = 0, caseId = '';
-    results.forEach(r => {
-      const cp = a.checkpoints.find(x => x.checkpoint_id === r.checkpoint_id) || fail('Checkpoint tidak dikenal');
-      const d = { checkpoint_id: cp.checkpoint_id, point_name_snapshot: cp.point_name, department: cp.repair_department, result: r.result, photo_file_id: r.photo || '', finding_note: r.note || '', case_id: '' };
-      if (r.result === 'NO OK') { nok++; d.case_id = caseId = addNok(a, cp, at, checker, d.finding_note, d.photo_file_id).case_id; }
-      ck.details.push(d);
-    });
-    D.ck[id] = ck; Object.assign(s, { status: 'DONE', checklist_id: id, checker, submitted_at: at, nok });
-    return { nok, case_id: caseId };
-  }
-  (function generate() {
-    const { op } = opInfo(), t0 = now();
-    for (let k = -13; k <= 0; k++) {
-      const d = addD(op, k);
-      D.cases.forEach(c => advance(c, d + ' 07:00:00'));
-      D.backup.push({ created_at: d + ' 02:00:00', type: 'AUTO', file_name: 'Backup_SaranaKerja_' + d, file_id: 'demo', status: 'OK', message: 'Selesai', trashed_at: '' });
-      M.assets.forEach(a => codes(a).forEach(code => {
-        const [open_at, close_at] = win(d, code);
-        const s = { schedule_id: 'SC-' + d.replace(/-/g, '') + '-' + a.asset_id + '-' + (code || 'D'), date: d, asset_id: a.asset_id, shift_code: code, open_at, close_at, status: 'OPEN', checklist_id: '', checker: '', submitted_at: '', nok: 0 };
-        D.sch.push(s);
-        if (open_at > t0) return;
-        const past = close_at <= t0, r = rnd();
-        if (past && r < 0.1) { s.status = 'MISSED'; return; }
-        if (!past && r < 0.65) return;
-        const at = addH(open_at, past ? 0.5 + rnd() * 5 : rnd() * hrs(open_at, t0) * 0.9);
-        submitCk(s, cps(a).map(cp => { const bad = rnd() < 0.06; return { checkpoint_id: cp.checkpoint_id, result: bad ? 'NO OK' : 'OK', note: bad ? pick(NOTES) : '', photo: bad ? photo([cp.point_name + ' — temuan', '#B42318']) : '' }; }), pick(personsFor(a)).display_name, at);
-      }));
-    }
-    D.cases.forEach(c => advance(c, t0));
-    D.audit.push({ created_at: addD(op, -14) + ' 08:00:00', actor_name: 'Administrator', actor_type: 'ACCOUNT', action: 'INSTALL', entity_type: 'SYSTEM', entity_id: '-', reason: 'Instalasi awal (data demo)', after_json: '' });
-  })();
-
-  // ---------- query helpers ----------
-  const caseOf = id => D.cases.find(c => c.case_id === id) || fail('Kasus tidak ditemukan');
-  const itemOf = id => { for (const c of D.cases) { const i = c.items.find(x => x.case_item_id === id); if (i) return { c, i }; } fail('Item tidak ditemukan'); };
-  const ageH = c => hrs(c.first_finding_at, c.closed_at || now());
-  const depts = c => uniq(c.items.map(i => i.department)).join(', ');
-  const techs = c => uniq(c.items.map(i => i.claimed_by_name_snapshot)).join(', ');
-  const isActive = c => c.status !== 'SELESAI';
-  const byAge = (a, b) => (a.first_finding_at < b.first_finding_at ? -1 : 1);
-  const agg = l => { const done = l.filter(s => s.status === 'DONE').length, missed = l.filter(s => s.status === 'MISSED').length, open = l.filter(s => s.status === 'OPEN').length; return { done, missed, open, compliance: done + missed ? Math.round(done / (done + missed) * 100) : null }; };
-  const schF = (from, to, f) => D.sch.filter(s => s.date >= from && s.date <= to && (!f.asset_id || s.asset_id === f.asset_id) && (!f.shift || s.shift_code === f.shift) && (!f.pic_id || picIds(asset(s.asset_id)).includes(f.pic_id)));
-  const noks = (sch, f) => sch.filter(s => s.checklist_id).flatMap(s => D.ck[s.checklist_id].details.filter(d => d.result === 'NO OK' && (!f.dept || d.department === f.dept)).map(d => Object.assign({ ck: D.ck[s.checklist_id] }, d)));
-  const casesF = f => D.cases.filter(c => (!f.asset_id || c.asset_id === f.asset_id) && (!f.dept || c.items.some(i => i.department === f.dept)) && (!f.status || c.status === f.status));
-  const monday = d => { const x = P(d); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return ds(x); };
-  const tok = me => 'demo.' + btoa(unescape(encodeURIComponent(JSON.stringify(me))));
-  const pubP = r => M.persons.filter(p => p.role_type === r && p.active === 'TRUE').map(p => ({ id: p.person_id, name: p.display_name }));
-  const svg = (label, color, id) => 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="100%" height="100%" fill="' + color + '"/><text x="50%" y="46%" fill="#fff" font-family="sans-serif" font-size="28" text-anchor="middle">' + label.replace(/[&<>]/g, '') + '</text><text x="50%" y="56%" fill="#fff" opacity=".75" font-family="sans-serif" font-size="18" text-anchor="middle">Foto dummy · ' + id + '</text></svg>');
-  const REP_TYPES = { checklist: 'Laporan Checklist', nok: 'Laporan Temuan NO OK', case: 'Laporan Kasus Perbaikan', missed: 'Jadwal Tidak Dikerjakan' };
-  function reportData(f) {
-    const sch = schF(f.from, f.to, f), sl = s => (s ? 'Shift ' + s : 'Harian');
-    if (f.type === 'nok') return { columns: ['Waktu', 'Alat', 'Checkpoint', 'Departemen', 'Pemeriksa', 'Catatan', 'Kasus'], rows: noks(sch, f).map(d => [d.ck.submitted_at.slice(0, 16), d.ck.asset_name_snapshot, d.point_name_snapshot, d.department, d.ck.checker_name_snapshot, d.finding_note, d.case_id]) };
-    if (f.type === 'case') return { columns: ['Kasus', 'Alat', 'Status', 'Item', 'Departemen', 'Temuan pertama', 'Ditutup', 'Rework'], rows: casesF(f).filter(c => c.first_finding_at.slice(0, 10) >= f.from && c.first_finding_at.slice(0, 10) <= f.to).map(c => [c.case_id, c.asset_name_snapshot, c.status, c.items.length, depts(c), c.first_finding_at.slice(0, 16), c.closed_at.slice(0, 16), c.rework_count]) };
-    if (f.type === 'missed') return { columns: ['Tanggal', 'Jadwal', 'Alat', 'PIC terdaftar'], rows: sch.filter(s => s.status === 'MISSED').map(s => [s.date, sl(s.shift_code), asset(s.asset_id).asset_name, personsFor(asset(s.asset_id)).map(p => p.display_name).join(', ')]) };
-    return { columns: ['Tanggal', 'Jadwal', 'Alat', 'Status', 'Pemeriksa', 'Waktu submit', 'OK', 'NO OK'], rows: sch.map(s => { const ck = D.ck[s.checklist_id]; return [s.date, sl(s.shift_code), asset(s.asset_id).asset_name, s.status, s.checker, s.submitted_at.slice(0, 16), ck ? ck.details.length - s.nok : '', ck ? s.nok : '']; }) };
-  }
-  const needAcc = (me, roles) => { if (!me || me.type !== 'ACCOUNT' || (roles && !roles.includes(me.role))) fail('Tidak punya akses'); };
-
-  // ---------- aksi API ----------
-  const H = {
-    publicInfo: () => ({ installed: true, persons: { PIC: pubP('PIC'), MAINTENANCE: pubP('MAINTENANCE'), UTILITY: pubP('UTILITY') } }),
-    install: () => ({ assets: M.assets.length, checkpoints: nCp, persons: M.persons.length, warnings: [] }),
-    login: x => {
-      const a = M.accounts.find(y => y.username === String(x.username).trim().toLowerCase() && y.active === 'TRUE');
-      if (!a || PW[a.account_id] !== x.password) fail('Username atau password salah (demo: admin / spv / head, password demo123)');
-      a.last_login_at = now(); const me = { type: 'ACCOUNT', id: a.account_id, role: a.role, name: a.display_name };
-      audit(me, 'LOGIN', 'ACCOUNT', a.account_id); return { token: tok(me), me };
-    },
-    guestLogin: x => { const p = M.persons.find(y => y.person_id === x.person_id && y.role_type === x.role) || fail('Nama tidak ditemukan'); const me = { type: 'GUEST', id: p.person_id, role: x.role, name: p.display_name }; return { token: tok(me), me }; },
-    logout: () => ({}),
-    changePassword: (x, me) => { needAcc(me); if (PW[me.id] !== x.oldPassword) fail('Password lama salah'); if (String(x.newPassword).length < 6) fail('Password baru minimal 6 karakter'); PW[me.id] = x.newPassword; return {}; },
-    lookups: () => { const o = opInfo(); return { opDate: o.op, shift: o.shift, pendingSpv: D.cases.filter(c => c.status === 'MENUNGGU_SPV').length, pendingHead: D.cases.filter(c => c.status === 'MENUNGGU_HEAD').length, dataFrom: D.sch[0].date, dataTo: o.op, assets: M.assets.filter(a => a.active === 'TRUE').map(a => ({ id: a.asset_id, name: a.asset_name })), pics: pubP('PIC'), ready: ready() }; },
-    dashboard: f => {
-      const gran = f.gran || 'D', single = f.from === f.to, t = now();
-      const sch = schF(f.from, f.to, f), cs = casesF(Object.assign({}, f, { status: '' })), act = cs.filter(isActive), items = act.flatMap(c => c.items);
-      const closed = cs.filter(c => c.status === 'SELESAI' && c.closed_at.slice(0, 10) >= f.from && c.closed_at.slice(0, 10) <= f.to);
-      const a = agg(sch), nk = noks(sch, f);
-      const keyOf = d => (gran === 'M' ? d.slice(0, 8) + '01' : gran === 'W' ? monday(d) : d);
-      let tFrom = f.from;
-      if (single) { if (gran === 'D') tFrom = addD(f.to, -13); else if (gran === 'W') tFrom = addD(monday(f.to), -77); else { const x = P(f.to); x.setDate(1); x.setMonth(x.getMonth() - 11); tFrom = ds(x); } }
-      const keys = []; for (let d = tFrom; d <= f.to; d = addD(d, 1)) if (!keys.includes(keyOf(d))) keys.push(keyOf(d));
-      const tSch = schF(tFrom, f.to, f);
-      const trend = keys.map(k => { const l = tSch.filter(s => keyOf(s.date) === k); return Object.assign({ date: k, nok: noks(l, f).length }, agg(l)); });
-      const cnt = {}; nk.forEach(d => { const k = d.ck.asset_name_snapshot + '|' + d.point_name_snapshot; cnt[k] = (cnt[k] || 0) + 1; });
-      const top = Object.keys(cnt).map(k => ({ asset: k.split('|')[0], point: k.split('|')[1], n: cnt[k] })).sort((x, y) => y.n - x.n);
-      const allItems = cs.flatMap(c => c.items), work = l => avg(l.filter(i => i.completed_at).map(i => hrs(i.started_at, i.completed_at)));
-      return {
-        period: { from: f.from, to: f.to, generated_at: t }, gran,
-        kpi: { assets: M.assets.filter(x => x.active === 'TRUE').length, scheduled: sch.length, done: a.done, compliance: a.compliance, missed: a.missed, nok_events: nk.length, nok_open_items: items.filter(i => i.status !== 'DONE').length,
-          cases_perlu: act.filter(c => c.status === 'PERLU_PERBAIKAN').length, cases_sedang: act.filter(c => c.status === 'SEDANG_DIPERBAIKI').length, items_open: items.filter(i => i.status === 'OPEN').length, items_claimed: items.filter(i => i.status === 'CLAIMED').length,
-          wait_spv: act.filter(c => c.status === 'MENUNGGU_SPV').length, wait_head: act.filter(c => c.status === 'MENUNGGU_HEAD').length, closed: closed.length },
-        trend, shiftComp: ['1', '2', '3'].map(s => Object.assign({ shift: s }, agg(sch.filter(x => x.shift_code === s)))),
-        resolution: { avg_case_h: avg(cs.filter(c => c.closed_at).map(ageH)), avg_work_h: work(allItems) },
-        repairStatus: { open: items.filter(i => i.status === 'OPEN').length, claimed: items.filter(i => i.status === 'CLAIMED').length, done_waiting: items.filter(i => i.status === 'DONE').length, closed_cases: closed.length },
-        oldest: act.filter(c => !f.status || c.status === f.status).sort(byAge).slice(0, 10).map(c => ({ case_id: c.case_id, asset: c.asset_name_snapshot, points: c.items.map(i => i.point_name_snapshot).join(', '), depts: depts(c), age_h: ageH(c), status: c.status })),
-        topCp: top.slice(0, 8), recurring: top.filter(x => x.n >= 2),
-        picPerf: M.persons.filter(p => p.role_type === 'PIC' && (!f.pic_id || p.person_id === f.pic_id)).map(p => { const l = sch.filter(s => picIds(asset(s.asset_id)).includes(p.person_id)), g = agg(l); return { name: p.display_name, assigned: l.length, covered: g.done, missed: g.missed, coverage: g.compliance }; }).filter(p => p.assigned),
-        deptPerf: ['PIC', 'MAINTENANCE', 'UTILITY'].filter(d => !f.dept || d === f.dept).map(d => { const l = allItems.filter(i => i.department === d); return { dept: d, received: l.length, done: l.filter(i => i.status === 'DONE').length, rework: l.reduce((s, i) => s + i.rework_count, 0), open_now: items.filter(i => i.department === d && i.status !== 'DONE').length, avg_work_h: work(l) }; })
-      };
-    },
-    worklist: (x, me) => {
-      const o = opInfo();
-      const mine = a => a.active === 'TRUE' && (me.role === 'UTILITY' ? a.checker_role === 'UTILITY' : a.checker_role === 'PIC' && picIds(a).includes(me.id));
-      return { ready: true, opDate: o.op, shift: o.shift, items: D.sch.filter(s => s.date === o.op && (s.shift_code === '' || s.shift_code === o.shift) && mine(asset(s.asset_id))).map(s => ({ schedule_id: s.schedule_id, asset_id: s.asset_id, asset_name: asset(s.asset_id).asset_name, shift_code: s.shift_code, points: cps(asset(s.asset_id)).length, close_at: s.close_at, done: s.status === 'DONE' })) };
-    },
-    checklistForm: x => {
-      const s = D.sch.find(y => y.schedule_id === x.schedule_id) || fail('Jadwal tidak ditemukan');
-      if (s.status !== 'OPEN') fail('Jadwal ini sudah diperiksa / ditutup');
-      const a = asset(s.asset_id), c = D.cases.find(y => y.asset_id === a.asset_id && isActive(y));
-      return { schedule_id: s.schedule_id, asset_id: a.asset_id, asset_name: a.asset_name, shift_code: s.shift_code, close_at: s.close_at, case_id: c ? c.case_id : '', points: cps(a).map(cp => ({ checkpoint_id: cp.checkpoint_id, point_name: cp.point_name, target_label: cp.target_label, in_repair: !!(c && c.items.some(i => i.checkpoint_id === cp.checkpoint_id && i.status !== 'DONE')) })) };
-    },
-    submitChecklist: (x, me) => {
-      const s = D.sch.find(y => y.schedule_id === x.schedule_id) || fail('Jadwal tidak ditemukan');
-      if (s.status !== 'OPEN') fail('Jadwal ini sudah diperiksa');
-      const r = submitCk(s, x.results.map(y => Object.assign({}, y, { photo: y.photo ? photo(y.photo) : '' })), me.name, now());
-      audit(me, 'SUBMIT_CHECKLIST', 'CHECKLIST', s.checklist_id, r.nok + ' NO OK'); return r;
-    },
-    todaySchedules: x => { const date = x.date || opInfo().op; return { date, ready: ready(), rows: D.sch.filter(s => s.date === date).map(s => Object.assign({ asset_name: asset(s.asset_id).asset_name, pics: personsFor(asset(s.asset_id)).map(p => p.display_name).join(', ') }, s)) }; },
-    checklistDetail: x => { const ck = D.ck[x.checklist_id] || fail('Checklist tidak ditemukan'); return { header: ck, details: ck.details }; },
-    repairQueue: (x, me) => {
-      const rows = [];
-      D.cases.filter(c => c.status === 'PERLU_PERBAIKAN' || c.status === 'SEDANG_DIPERBAIKI').sort(byAge).forEach(c => c.items.filter(i => i.department === me.role && i.status !== 'DONE').forEach(i => {
-        const last = i.occurrences[i.occurrences.length - 1];
-        rows.push({ case_id: c.case_id, asset_name: c.asset_name_snapshot, age_h: ageH(c), case_item_id: i.case_item_id, point_name: i.point_name_snapshot, department: i.department, status: i.status, found_at: i.occurrences[0].recorded_at, occurrence: i.occurrence_count, claimed_by: i.claimed_by_name_snapshot, finding_note: last.note, reject_note: i.last_reject_note, rework: i.rework_count, before_photo: last.photo, mine: i.claimed_by === me.id, started_at: i.started_at });
-      }));
-      return { rows };
-    },
-    claimItem: (x, me) => {
-      const { c, i } = itemOf(x.case_item_id);
-      if (me.type !== 'GUEST' || me.role !== i.department) fail('Item ini bukan untuk departemen Anda');
-      if (i.status !== 'OPEN') fail('Item sudah diambil teknisi lain');
-      claim(c, i, me.id, me.name, now()); return { case_status: c.status };
-    },
-    releaseItem: (x, me) => { const { c, i } = itemOf(x.case_item_id); if (i.status !== 'CLAIMED') fail('Item tidak sedang dikerjakan'); release(c, i, me.name, now()); audit(me, 'RELEASE', 'CASE_ITEM', i.case_item_id); return { case_status: c.status }; },
-    completeItem: (x, me) => {
-      const { c, i } = itemOf(x.case_item_id);
-      if (i.status !== 'CLAIMED' || i.claimed_by !== me.id) fail('Item ini tidak sedang Anda kerjakan');
-      if (!String(x.action || '').trim() || !x.photo) fail('Tindakan & foto sesudah wajib');
-      complete(c, i, x.action, photo(x.photo), now()); return { case_status: c.status };
-    },
-    caseList: f => {
-      const q = String(f.q || '').toLowerCase(), size = 20, page = f.page || 1;
-      const l = casesF(f).filter(c => (!f.from || c.first_finding_at.slice(0, 10) >= f.from) && (!f.to || c.first_finding_at.slice(0, 10) <= f.to) && (!q || (c.case_id + ' ' + c.asset_name_snapshot).toLowerCase().includes(q)))
-        .sort((a, b) => (isActive(b) - isActive(a)) || (isActive(a) ? byAge(a, b) : (a.closed_at < b.closed_at ? 1 : -1)));
-      return { total: l.length, page, size, rows: l.slice((page - 1) * size, page * size).map(c => ({ case_id: c.case_id, asset_name_snapshot: c.asset_name_snapshot, status: c.status, done: c.items.filter(i => i.status === 'DONE').length, items: c.items.length, depts: depts(c), first_finding_at: c.first_finding_at, age_h: ageH(c), rework_count: c.rework_count })) };
-    },
-    caseDetail: (x, me) => {
-      const c = caseOf(x.case_id), work = c.status === 'PERLU_PERBAIKAN' || c.status === 'SEDANG_DIPERBAIKI';
-      const level = c.status === 'MENUNGGU_SPV' ? 'SPV' : c.status === 'MENUNGGU_HEAD' ? 'HEAD' : '';
-      return { case: c, level, approvals: c.approvals, logs: c.logs, can_decide: !!level && me.type === 'ACCOUNT' && (me.role === 'ADMIN' || me.role === level), can_release: work && me.type === 'ACCOUNT' && (me.role === 'ADMIN' || me.role === 'SPV'),
-        items: c.items.map(i => Object.assign({ can_claim: work && me.type === 'GUEST' && me.role === i.department && i.status === 'OPEN', can_complete: i.status === 'CLAIMED' && i.claimed_by === me.id }, i)) };
-    },
-    decide: (x, me) => {
-      needAcc(me, ['ADMIN', x.level]);
-      const c = caseOf(x.case_id);
-      if (c.status !== 'MENUNGGU_' + x.level || c.cycle_no !== x.cycle_no) fail('Status kasus sudah berubah. Muat ulang.');
-      if (x.decision === 'REJECT' && (!x.note || !x.item_ids.length)) fail('Alasan & item rework wajib');
-      decide(c, x.level, x.decision, { name: me.name, role: me.role }, now(), x.note, x.item_ids || []);
-      audit(me, 'APPROVAL_' + x.decision, 'CASE', c.case_id, x.note); return { status: c.status };
-    },
-    approvalQueue: (x, me) => ({ rows: D.cases.filter(c => (me.role !== 'HEAD' && c.status === 'MENUNGGU_SPV') || (me.role !== 'SPV' && c.status === 'MENUNGGU_HEAD')).sort(byAge).map(c => ({ case_id: c.case_id, asset_name_snapshot: c.asset_name_snapshot, status: c.status, items: c.items.length, technicians: techs(c), first_finding_at: c.first_finding_at, age_h: ageH(c), rework: c.rework_count })) }),
-    kanban: x => {
-      const date = x.date || opInfo().op, sch = D.sch.filter(s => s.date === date);
-      const sc = s => ({ type: 'schedule', checklist_id: s.checklist_id, asset_name: asset(s.asset_id).asset_name, asset_id: s.asset_id, date: s.date, shift: s.shift_code, at: s.submitted_at, who: s.checker || personsFor(asset(s.asset_id)).map(p => p.display_name).join(', '), close_at: s.close_at });
-      const cc = c => ({ type: 'case', id: c.case_id, asset_name: c.asset_name_snapshot, asset_id: c.asset_id, age_h: ageH(c), points: c.items.length, depts: depts(c), who: techs(c), rework: c.rework_count });
-      const col = st => D.cases.filter(c => c.status === st).sort(byAge).map(cc);
-      return { date, missed: sch.filter(s => s.status === 'MISSED').length, columns: [
-        { key: 'BELUM', title: 'Belum dicek', cards: sch.filter(s => s.status === 'OPEN').map(sc) }, { key: 'CEK_OK', title: 'Sudah dicek', cards: sch.filter(s => s.status === 'DONE').map(sc) },
-        { key: 'PERLU_PERBAIKAN', title: 'Perlu Perbaikan', cards: col('PERLU_PERBAIKAN') }, { key: 'SEDANG_DIPERBAIKI', title: 'Sedang Diperbaiki', cards: col('SEDANG_DIPERBAIKI') },
-        { key: 'MENUNGGU_SPV', title: 'Menunggu SPV', cards: col('MENUNGGU_SPV') }, { key: 'MENUNGGU_HEAD', title: 'Menunggu Head', cards: col('MENUNGGU_HEAD') },
-        { key: 'SELESAI', title: 'Selesai (7 hari)', cards: D.cases.filter(c => c.status === 'SELESAI' && c.closed_at >= addD(date, -7)).sort((a, b) => (a.closed_at < b.closed_at ? 1 : -1)).map(cc) }] };
-    },
-    report: f => { const r = reportData(f), size = 50, page = f.page || 1; return { types: REP_TYPES, title: REP_TYPES[f.type] || REP_TYPES.checklist, period: f.from + ' s.d. ' + f.to, total: r.rows.length, columns: r.columns, rows: r.rows.slice((page - 1) * size, page * size), page, size }; },
-    exportReport: f => {
-      const r = reportData(f), q = v => '"' + String(v).replace(/"/g, '""') + '"';
-      const csv = '﻿' + [r.columns].concat(r.rows).map(row => row.map(q).join(',')).join('\r\n');
-      return { name: 'laporan-' + (f.type || 'checklist') + '_' + f.from + '_' + f.to + '.csv', mime: 'text/csv', data: btoa(unescape(encodeURIComponent(csv))) };
-    },
-    masterData: (x, me) => { needAcc(me, ['ADMIN']); return { ready: ready(), activated: true, assets: M.assets, persons: M.persons, accounts: M.accounts }; },
-    saveMapping: (x, me) => { needAcc(me, ['ADMIN']); x.changes.forEach(ch => M.assets.forEach(a => a.checkpoints.forEach(c => { if (c.checkpoint_id === ch.checkpoint_id) c.repair_department = ch.dept; }))); audit(me, 'SAVE_MAPPING', 'CHECKPOINT', x.changes.length + ' item'); return { changed: x.changes.length, ready: ready() }; },
-    saveAsset: (x, me) => {
-      needAcc(me, ['ADMIN']);
-      const v = x.asset; if (!String(v.asset_name).trim()) fail('Nama alat wajib diisi');
-      let a = v.asset_id && asset(v.asset_id);
-      if (!a) M.assets.push(a = { asset_id: 'A' + String(M.assets.length + 1).padStart(3, '0'), source_no: '', checkpoints: [] });
-      Object.assign(a, { asset_name: v.asset_name.trim(), schedule_type: v.schedule_type, checker_role: v.checker_role, pic_group: v.pic_group, pic_ids: v.pic_ids.join(','), active: v.active ? 'TRUE' : 'FALSE' });
-      a.checkpoints = x.checkpoints.filter(c => c.checkpoint_id || String(c.point_name).trim()).map((c, i) => Object.assign({}, c, { checkpoint_id: c.checkpoint_id || 'CP' + String(++nCp).padStart(3, '0'), display_order: i + 1, active: c.active === 'FALSE' ? 'FALSE' : 'TRUE' }));
-      audit(me, 'SAVE_ASSET', 'ASSET', a.asset_id, '', { asset_name: a.asset_name, points: a.checkpoints.length }); return { asset_id: a.asset_id };
-    },
-    savePerson: (x, me) => {
-      needAcc(me, ['ADMIN']); if (!String(x.display_name).trim()) fail('Nama wajib diisi');
-      let p = M.persons.find(y => y.person_id === x.person_id);
-      if (!p) M.persons.push(p = { person_id: 'P' + String(M.persons.length + 1).padStart(3, '0') });
-      Object.assign(p, { display_name: x.display_name.trim(), role_type: x.role_type, active: x.active ? 'TRUE' : 'FALSE' }); audit(me, 'SAVE_PERSON', 'PERSON', p.person_id, '', p); return { person_id: p.person_id };
-    },
-    saveAccount: (x, me) => {
-      needAcc(me, ['ADMIN']);
-      const u = String(x.username).trim().toLowerCase(); if (!u || !String(x.display_name).trim()) fail('Username & nama wajib diisi');
-      if (M.accounts.some(a => a.username === u && a.account_id !== x.account_id)) fail('Username sudah dipakai');
-      let a = M.accounts.find(y => y.account_id === x.account_id);
-      if (!a) { if (String(x.password).length < 6) fail('Password minimal 6 karakter'); M.accounts.push(a = { account_id: 'AC' + (M.accounts.length + 1), last_login_at: '' }); PW[a.account_id] = x.password; }
-      Object.assign(a, { username: u, display_name: x.display_name.trim(), role: x.role, active: x.active ? 'TRUE' : 'FALSE' }); audit(me, 'SAVE_ACCOUNT', 'ACCOUNT', a.account_id, '', { username: u, role: x.role }); return {};
-    },
-    resetPassword: (x, me) => { needAcc(me, ['ADMIN']); if (String(x.password).length < 6) fail('Password minimal 6 karakter'); PW[x.account_id] = x.password; audit(me, 'RESET_PASSWORD', 'ACCOUNT', x.account_id); return {}; },
-    auditLog: (x, me) => { needAcc(me, ['ADMIN']); return D.audit.slice(-300).reverse(); },
-    settings: (x, me) => { needAcc(me, ['ADMIN']); return { values: SET, token_masked: TOKEN ? TOKEN.slice(0, 3) + '••••' + TOKEN.slice(-2) : '', root_folder_url: 'https://drive.google.com/', activated_at: D.sch[0].date + ' 07:00:00' }; },
-    saveSettings: (x, me) => { needAcc(me, ['ADMIN']); Object.assign(SET, x.values); audit(me, 'SAVE_SETTINGS', 'SETTINGS', '-'); return {}; },
-    saveFonnteToken: (x, me) => { needAcc(me, ['ADMIN']); if (!String(x.token).trim()) fail('Token kosong'); TOKEN = x.token.trim(); return { token_masked: TOKEN.slice(0, 3) + '••••' + TOKEN.slice(-2) }; },
-    testFonnte: () => { D.notif.push({ created_at: now(), event_type: 'TEST', payload_summary: 'Pesan tes (demo)', status: 'SENT', attempt_count: 1, provider_response: '{"status":true}' }); return { device_ok: true, device: { device_status: 'connect (demo)' }, device_text: '', send_ok: true, send_text: '' }; },
-    backupNow: () => { const name = 'Backup_SaranaKerja_' + now().replace(/[ :]/g, '-').slice(0, 16); D.backup.push({ created_at: now(), type: 'MANUAL', file_name: name, file_id: 'demo', status: 'OK', message: 'Selesai (demo)', trashed_at: '' }); return { file_name: name }; },
-    retryNotif: () => { const l = D.notif.filter(n => n.status === 'FAILED'); l.forEach(n => { n.status = 'SENT'; n.attempt_count++; n.provider_response = '{"status":true,"detail":"resent"}'; }); return { sent: l.length, tried: l.length }; },
-    notifLog: () => D.notif.slice(-200).reverse(),
-    backupLog: () => D.backup.slice(-60).reverse(),
-    photo: x => { const p = D.photos[x.id] || fail('Foto tidak ditemukan'); return typeof p === 'string' ? p : svg(p[0], p[1], x.id); }
-  };
-  const mk = (s, f) => ({ withSuccessHandler: x => mk(x, f), withFailureHandler: x => mk(s, x),
-    api: (token, action, args) => setTimeout(() => {
-      let r;
-      try {
-        const me = token ? JSON.parse(decodeURIComponent(escape(atob(token.slice(5))))) : null;
-        if (!H[action]) fail('Aksi tidak dikenal: ' + action);
-        r = { success: true, data: H[action](args || {}, me) };
-      } catch (e) { r = { success: false, message: e.message }; }
-      if (s) s(JSON.parse(JSON.stringify(r)));
-    }, 120) });
-  window.google = { script: { run: mk(null, null) } };
-  console.info('[DEMO] Backend tiruan aktif — login admin/spv/head, password demo123');
-})();
 if (!(window.google && google.script && google.script.run)) {
-  // Content-Type text/plain → tanpa preflight CORS; Apps Script membalas JSON dari doPost.
+  // Content-Type text/plain → tanpa preflight CORS; Edge Function membalas JSON.
   const mk = (s, f) => ({ withSuccessHandler: x => mk(x, f), withFailureHandler: x => mk(s, x),
     api: (...a) => fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(a), redirect: 'follow' })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(r => s && s(r)).catch(e => f && f(e)) });
@@ -518,12 +167,6 @@ function compress(file, maxKb) {
     img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Gambar tidak bisa dibaca')); };
     img.src = url;
   });
-}
-function download(file) {
-  const bin = atob(file.data), arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([arr], { type: file.mime })); a.download = file.name;
-  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 function destroyCharts() { S.charts.forEach(c => { try { c.destroy(); } catch (e) {} }); S.charts = []; }
 function chart(id, cfg) {
@@ -1037,7 +680,7 @@ Pages.laporan = async v => {
     '<div class="panel"><div class="head"><div class="grow"><h3>' + h(d.title) + '</h3><div class="muted small">Periode ' + h(d.period) + ' · ' + d.total + ' baris · zona waktu WIB</div></div>' +
     '<button class="btn" onclick="Report.exp(\'xlsx\')"><i data-lucide="download"></i> Excel</button><button class="btn" onclick="Report.exp(\'pdf\')"><i data-lucide="download"></i> PDF</button></div><div class="body">' +
     '<div class="tbl-wrap"><table class="t"><thead><tr>' + d.columns.map(c => '<th>' + h(c) + '</th>').join('') + '</tr></thead><tbody>' +
-    (d.rows.length ? d.rows.map(r => '<tr>' + r.map(x => '<td>' + (/^https:\/\/drive\.google\.com/.test(String(x)) ? '<a href="' + h(x) + '" target="_blank" rel="noopener">Buka</a>' : h(x)) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="' + d.columns.length + '" class="empty">Tidak ada data</td></tr>') +
+    (d.rows.length ? d.rows.map(r => '<tr>' + r.map(x => '<td>' + (/^https:\/\/(drive\.google\.com|[\w-]+\.supabase\.co\/storage\/v1\/object\/sign\/)/.test(String(x)) ? '<a href="' + h(x) + '" target="_blank" rel="noopener">Buka</a>' : h(x)) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="' + d.columns.length + '" class="empty">Tidak ada data</td></tr>') +
     '</tbody></table></div>' + pager(d, 'Report.page') + '</div></div>';
   autoApply($('.filters', v), () => {
     const nf = { type: $('#rpType').value, from: $('#rpFrom').value, to: $('#rpTo').value, asset_id: $('#rpAsset').value, pic_id: $('#rpPic').value, dept: $('#rpDept').value, shift: $('#rpShift').value, status: $('#rpSt').value, page: 1 };
@@ -1046,11 +689,29 @@ Pages.laporan = async v => {
     S.repF = nf; App.go('laporan', true);
   });
 };
+// Pustaka ekspor dimuat sekali, berurutan (autotable butuh jspdf lebih dulu).
+const LIBS = { xlsx: ['xlsx@0.18.5/dist/xlsx.full.min.js'], pdf: ['jspdf@2.5.2/dist/jspdf.umd.min.js', 'jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js'] };
+const libP = {};
+const loadLib = p => libP[p] || (libP[p] = new Promise((ok, no) => { const el = document.createElement('script'); el.src = 'https://cdn.jsdelivr.net/npm/' + p; el.onload = ok; el.onerror = () => { delete libP[p]; no(new Error('Gagal memuat pustaka ekspor')); }; document.head.appendChild(el); }));
 const Report = {
   page(p) { S.repF.page = p; App.go('laporan', true); },
   async exp(fmt) {
     toast('Menyiapkan file ' + fmt.toUpperCase() + '…');
-    try { download(await call('exportReport', Object.assign({}, S.repF, { format: fmt }))); } catch (e) { toast(e.message, 'err'); }
+    try {
+      const d = await call('report', Object.assign({}, S.repF, { all: true, format: fmt }));
+      for (const p of LIBS[fmt]) await loadLib(p);
+      const meta = ['GISTEX — ' + d.title, 'Periode: ' + d.period, 'Filter: ' + d.filter_text, 'Dibuat: ' + d.generated_at + ' WIB (Asia/Jakarta) oleh ' + S.me.name];
+      const name = d.title.replace(/[^\w]+/g, '_') + '_' + S.repF.from + '_' + S.repF.to + '.' + fmt;
+      if (fmt === 'xlsx') {
+        const ws = XLSX.utils.aoa_to_sheet(meta.map(m => [m]).concat([[]], [d.columns], d.rows)), wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Laporan'); XLSX.writeFile(wb, name);
+      } else {
+        const doc = new jspdf.jsPDF({ orientation: 'landscape', format: 'a4' });
+        meta.forEach((m, i) => doc.text(m, 14, 14 + i * 6));
+        doc.autoTable({ startY: 14 + meta.length * 6 + 4, head: [d.columns], body: d.rows, styles: { fontSize: 7 } });
+        doc.save(name);
+      }
+    } catch (e) { toast(e.message, 'err'); }
   }
 };
 
@@ -1193,7 +854,7 @@ Pages.pengaturan = async v => {
   const tpl = (k, l) => '<label class="f">' + h(l) + '<textarea class="inp" rows="4" data-set="' + k + '">' + h(x[k]) + '</textarea></label>';
   v.innerHTML =
     '<div class="panel"><div class="head"><h3>WhatsApp — Fonnte</h3></div><div class="body" style="display:flex;flex-direction:column;gap:12px">' +
-    '<div class="row"><label class="f grow">API token (tersimpan di Script Properties, tidak ditampilkan penuh)<input class="inp" type="password" id="fnTok" placeholder="' + h(st.token_masked || 'Belum diatur') + '" autocomplete="off"></label><button class="btn" id="fnTokSave" style="margin-top:18px">Simpan token</button></div>' +
+    '<div class="row"><label class="f grow">API token (tersimpan di Supabase Vault, tidak ditampilkan penuh)<input class="inp" type="password" id="fnTok" placeholder="' + h(st.token_masked || 'Belum diatur') + '" autocomplete="off"></label><button class="btn" id="fnTokSave" style="margin-top:18px">Simpan token</button></div>' +
     '<label class="f">Group ID tujuan (pisahkan koma bila lebih dari satu)<input class="inp" data-set="WA_GROUPS" value="' + h(x.WA_GROUPS) + '" placeholder="1203630xxxxx@g.us"></label>' +
     '<div class="row"><button class="btn" id="fnTest"><i data-lucide="send"></i> Tes koneksi / kirim pesan tes</button><span id="fnOut" class="small"></span></div>' +
     '<div class="grid2" style="gap:6px"><div><b class="small">Jenis notifikasi</b>' + tog('NOTIF_NOK', 'Temuan NO OK baru') + tog('NOTIF_SPV', 'Perbaikan selesai — menunggu SPV') + tog('NOTIF_HEAD', 'SPV menyetujui — menunggu Head') + tog('NOTIF_REJECT', 'Approval ditolak — kembali ke perbaikan') + tog('NOTIF_DONE', 'Kasus selesai (Head menyetujui)') + tog('NOTIF_REMINDER', 'Pengingat perbaikan belum selesai (harian 07.30)') + '</div>' +
@@ -1204,7 +865,7 @@ Pages.pengaturan = async v => {
     '<div class="panel"><div class="head"><h3>Foto, Drive & Backup</h3></div><div class="body" style="display:flex;flex-direction:column;gap:12px">' +
     '<div class="row"><label class="f">Batas ukuran foto (KB)<input class="inp" type="number" min="200" max="20480" data-set="PHOTO_MAX_KB" value="' + h(x.PHOTO_MAX_KB) + '"></label>' +
     '<label class="f">Retensi backup (hari, 0 = selamanya)<input class="inp" type="number" min="0" max="3650" data-set="BACKUP_RETENTION_DAYS" value="' + h(x.BACKUP_RETENTION_DAYS) + '"></label></div>' +
-    '<div class="row"><a class="btn" href="' + h(st.root_folder_url) + '" target="_blank" rel="noopener"><i data-lucide="folder"></i> Buka folder Drive</a><button class="btn" id="bkNow"><i data-lucide="database"></i> Backup sekarang</button>' +
+    '<div class="row"><a class="btn" href="' + h(st.root_folder_url) + '" target="_blank" rel="noopener"><i data-lucide="folder"></i> Buka Storage Supabase</a><button class="btn" id="bkNow"><i data-lucide="database"></i> Backup sekarang</button>' +
     '<span class="muted small">Backup otomatis setiap hari ±02.00 WIB · checklist aktif sejak ' + h(fTs(st.activated_at) || '— (belum aktif)') + '</span></div></div></div>' +
     '<div class="row"><span class="grow"></span><button class="btn pri lg" id="setSave">Simpan pengaturan</button></div>' +
     '<div class="panel"><div class="head"><h3>Log notifikasi</h3><span class="grow"></span><button class="btn sm" id="nlRetry"><i data-lucide="refresh-cw"></i> Kirim ulang yang gagal</button></div><div class="body" id="nlBody"><div class="empty">Memuat…</div></div></div>' +
@@ -1230,11 +891,11 @@ App.loadLogs = async () => {
     $('#nlBody').innerHTML = nl.length ? '<div class="tbl-wrap" style="max-height:360px"><table class="t"><thead><tr><th>Waktu</th><th>Jenis</th><th>Ringkasan</th><th>Status</th><th>Percobaan</th><th>Respons</th></tr></thead><tbody>' + nl.map(n =>
       '<tr><td class="nowrap">' + h(fTs(n.created_at)) + '</td><td>' + h(n.event_type) + '</td><td class="small" style="max-width:360px">' + h(n.payload_summary) + '</td><td>' + (n.status === 'SENT' ? '<span class="chip c-ok">Terkirim</span>' : n.status === 'FAILED' ? '<span class="chip c-bad">Gagal</span>' : '<span class="chip c-warn">' + h(n.status) + '</span>') + '</td><td>' + h(n.attempt_count) + '</td><td class="small muted" style="max-width:240px;word-break:break-word">' + h(String(n.provider_response).slice(0, 160)) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty">Belum ada notifikasi</div>';
     $('#bkBody').innerHTML = bk.length ? '<div class="tbl-wrap" style="max-height:300px"><table class="t"><thead><tr><th>Waktu</th><th>Jenis</th><th>File</th><th>Status</th><th>Pesan</th></tr></thead><tbody>' + bk.map(b =>
-      '<tr><td class="nowrap">' + h(fTs(b.created_at)) + '</td><td>' + h(b.type) + '</td><td>' + (b.file_id && !b.trashed_at ? '<a target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/' + h(b.file_id) + '">' + h(b.file_name) + '</a>' : h(b.file_name) + (b.trashed_at ? ' <span class="muted small">(dihapus retensi)</span>' : '')) + '</td><td>' + (b.status === 'OK' ? '<span class="chip c-ok">OK</span>' : '<span class="chip c-bad">Gagal</span>') + '</td><td class="small">' + h(b.message) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty">Belum ada backup</div>';
+      '<tr><td class="nowrap">' + h(fTs(b.created_at)) + '</td><td>' + h(b.type) + '</td><td>' + (b.url && !b.trashed_at ? '<a target="_blank" rel="noopener" href="' + h(b.url) + '">' + h(b.file_name) + '</a>' : h(b.file_name) + (b.trashed_at ? ' <span class="muted small">(dihapus retensi)</span>' : '')) + '</td><td>' + (b.status === 'OK' ? '<span class="chip c-ok">OK</span>' : '<span class="chip c-bad">Gagal</span>') + '</td><td class="small">' + h(b.message) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty">Belum ada backup</div>';
   } catch (e) { /* abaikan */ }
 };
 
 // Mulai: cek status instalasi ke server (pengganti BOOT dari doGet), lalu jalankan aplikasi.
 google.script.run.withSuccessHandler(r => { BOOT.installed = !!(r && r.data && r.data.installed); App.init(); })
-  .withFailureHandler(e => { $('#boot').innerHTML = '<div class="muted" style="text-align:center">Tidak bisa terhubung ke server Apps Script.<br>Periksa API_URL di script.js dan koneksi internet.<br><small>' + h(e && e.message || e) + '</small></div>'; })
+  .withFailureHandler(e => { $('#boot').innerHTML = '<div class="muted" style="text-align:center">Tidak bisa terhubung ke server.<br>Periksa API_URL di script.js dan koneksi internet.<br><small>' + h(e && e.message || e) + '</small></div>'; })
   .api(null, 'publicInfo', {});
