@@ -1,17 +1,12 @@
 import { AUTH_ROUTES, resolve } from './auth.ts';
 import { selectAll } from './db.ts';
+import { photo } from './photos.ts';
+import { isMasterReady, SCHEDULE_ROUTES } from './schedule.ts';
 import type { ApiResult, RouteFn, Session } from './types.ts';
-import { ALL, DEPTS, err, fail, GUEST, LOGGED, UserError } from './util.ts';
+import { ALL, err, fail, GUEST, LOGGED, UserError } from './util.ts';
 
 const todo: RouteFn = () => Promise.reject(err('Belum tersedia', 'NOT_FOUND'));
 const r = (roles: string[] | null, fn: RouteFn = todo) => ({ roles, fn });
-
-export async function isMasterReady() {
-  const aset = new Set((await selectAll<{ asset_id: string; active: string }>('master_asset')).filter((a) => a.active === 'TRUE').map((a) => a.asset_id));
-  const cps = (await selectAll<{ asset_id: string; active: string; repair_department: string }>('master_checkpoint')).filter((c) => c.active === 'TRUE' && aset.has(c.asset_id));
-  const unmapped = cps.filter((c) => !DEPTS.includes(c.repair_department)).length;
-  return { ok: cps.length > 0 && unmapped === 0, unmapped, total: cps.length };
-}
 
 const publicInfo: RouteFn = async () => {
   const persons: Record<string, { id: string; name: string }[]> = { PIC: [], MAINTENANCE: [], UTILITY: [] };
@@ -27,11 +22,12 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   publicInfo: r(null, publicInfo),
   login: r(null, AUTH_ROUTES.login), guestLogin: r(null, AUTH_ROUTES.guestLogin), logout: r(ALL, AUTH_ROUTES.logout),
   // Checklist
-  worklist: r(['PIC', 'UTILITY']), checklistForm: r(['PIC', 'UTILITY']), submitChecklist: r(['PIC', 'UTILITY']),
-  todaySchedules: r(LOGGED), checklistDetail: r(LOGGED),
+  worklist: r(['PIC', 'UTILITY'], SCHEDULE_ROUTES.worklist), checklistForm: r(['PIC', 'UTILITY'], SCHEDULE_ROUTES.checklistForm),
+  submitChecklist: r(['PIC', 'UTILITY'], SCHEDULE_ROUTES.submitChecklist),
+  todaySchedules: r(LOGGED, SCHEDULE_ROUTES.todaySchedules), checklistDetail: r(LOGGED, SCHEDULE_ROUTES.checklistDetail),
   // Perbaikan
   repairQueue: r(ALL), claimItem: r(GUEST), completeItem: r(GUEST), releaseItem: r(['ADMIN', 'SPV']),
-  caseDetail: r(ALL), caseList: r(LOGGED), photo: r(ALL),
+  caseDetail: r(ALL), caseList: r(LOGGED), photo: r(ALL, photo),
   // Approval
   approvalQueue: r(LOGGED), decide: r(LOGGED),
   // Monitoring
