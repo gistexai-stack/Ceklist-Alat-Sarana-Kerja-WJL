@@ -16,6 +16,7 @@ const SQL_ERRORS: [RegExp, (m: RegExpExecArray) => Error][] = [
   [/^CASE_NOT_FOUND/, () => err('Kasus tidak ditemukan', 'NOT_FOUND')],
   [/^PHASE/, () => err('Kasus tidak sedang dalam tahap perbaikan', 'STATE')],
   [/^TAKEN:(.*)/, (m) => err('Pekerjaan sudah diambil oleh ' + m[1], 'TAKEN')],
+  [/^RELEASE_STATE/, () => err('Item tidak sedang diambil', 'STATE')],
   [/^ITEM_STATE/, () => err('Status item sudah berubah, muat ulang', 'STATE')],
   [/^CASE_STATE/, () => err('Kasus tidak sedang menunggu approval (mungkin sudah diputuskan)', 'STATE')],
   [/^STALE/, () => err('Data kasus sudah berubah. Muat ulang sebelum memutuskan.', 'STALE')],
@@ -94,7 +95,7 @@ const completeItem: RouteFn = async (s, a) => {
   try {
     r = await rpc('complete_item', { case_item_id: it.case_item_id, person_id: s!.person_id, name: s!.name, action: action.slice(0, 1000), photo_id: photo.id, now_str: ts() });
   } catch (e) {
-    await trashPhotos([photo.id]);
+    try { await trashPhotos([photo.id]); } catch (e2) { console.error('trashPhotos: ' + e2); }
     throw e;
   }
   if (r.ev === 'TO_SPV') await safeNotify('SPV', 'SPV-' + c.case_id + '-' + r.cycle_no, caseVars({ ...c, status: r.case_status }));
@@ -103,7 +104,7 @@ const completeItem: RouteFn = async (s, a) => {
 
 const releaseItem: RouteFn = async (s, a) => {
   const r = await rpc('release_item', { case_item_id: String(a.case_item_id), name: s!.name, reason: a.reason ? String(a.reason) : '', now_str: ts() });
-  await audit(s, 'RELEASE_ITEM', 'REPAIR_ITEM', r.before.case_item_id, r.before, r.after, a.reason);
+  try { await audit(s, 'RELEASE_ITEM', 'REPAIR_ITEM', r.before.case_item_id, r.before, r.after, a.reason); } catch (e) { console.error('audit RELEASE_ITEM: ' + e); }
   return true;
 };
 

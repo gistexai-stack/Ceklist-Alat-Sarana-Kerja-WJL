@@ -126,7 +126,8 @@ Deno.test('REJECT dengan item_ids -> item OPEN, rework_count 1, cycle naik, log 
   assertEquals((await call(spv, 'releaseItem', { case_item_id: a.case_item_id, reason: 'cuti' })).data, true);
   assertEquals((await item('CP-1', 'CASE-00002')).status, 'OPEN');
   assertEquals((await rows('repair_log')).find((l) => l.event === 'RELEASE').note, 'Dilepas oleh spv: cuti');
-  assertEquals((await call(spv, 'releaseItem', { case_item_id: a.case_item_id })).code, 'STATE');
+  const notClaimed = await call(spv, 'releaseItem', { case_item_id: a.case_item_id });
+  assertEquals([notClaimed.code, notClaimed.message], ['STATE', 'Item tidak sedang diambil']);
 });
 
 Deno.test('caseList: filter status, total, paging size 25 (sesuai caseList_ Code.gs)', async () => {

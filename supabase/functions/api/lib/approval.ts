@@ -26,7 +26,7 @@ const decide: RouteFn = async (s, a) => {
   const r = await rpc('decide_case', { case_id: String(a.case_id), decision, note, cycle_no: String(a.cycle_no), level: a.level || '', role: s!.role,
     account_id: s!.account_id, name: s!.name, item_ids: Array.isArray(a.item_ids) ? a.item_ids : [], approval_id: approvalId, now_str: ts() });
   const [c] = await selectAll('repair_case', (q) => q.eq('case_id', String(a.case_id)));
-  await audit(s, 'APPROVAL_' + decision, 'REPAIR_CASE', c.case_id, r.before, { status: r.status, cycle_no: r.cycle_no, level: r.level }, note);
+  try { await audit(s, 'APPROVAL_' + decision, 'REPAIR_CASE', c.case_id, r.before, { status: r.status, cycle_no: r.cycle_no, level: r.level }, note); } catch (e) { console.error('audit APPROVAL: ' + e); }
   const vars = caseVars(c, { approver: s!.name, catatan: note || '-', status: r.level });
   if (r.ev === 'HEAD') await safeNotify('HEAD', 'HEAD-' + c.case_id + '-' + r.cycle_no, vars);
   if (r.ev === 'DONE') await safeNotify('DONE', 'DONE-' + c.case_id, vars);
