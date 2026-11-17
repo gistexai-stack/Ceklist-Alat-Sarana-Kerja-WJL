@@ -39,7 +39,9 @@ Deno.test('submit semua OK -> DONE, submit kedua ditolak', async () => {
   const [h] = await rows('checklist_header');
   assertEquals([h.ok_count, h.nok_count, h.overall_result], ['3', '0', 'OK']);
   assertEquals((await rows('schedule')).find((s) => s.schedule_id === dailyId).status, 'DONE');
-  assertEquals((await call(pic, 'submitChecklist', { schedule_id: dailyId, results: results(form) })).success, false);
+  const dup = await call(pic, 'submitChecklist', { schedule_id: dailyId, results: results(form) });
+  assertEquals([dup.success, dup.code], [false, 'DUPLICATE']);
+  assertEquals(dup.message, 'Jadwal ini sudah diperiksa');
   const d = await call(pic, 'checklistDetail', {}); // PIC bukan peran LOGGED
   assertEquals(d.code, 'FORBIDDEN');
 });
@@ -96,4 +98,43 @@ Deno.test('jadwal lewat close_at: MISSED di tampilan, lalu di tabel setelah mark
   await markMissed();
   const s = (await rows('schedule')).find((x) => x.schedule_id === 'SCH-OLD');
   assertEquals([s.status, s.closed_at], ['MISSED', s.close_at]);
+});
+
+const future = ts(new Date(now.getTime() + 36e5));
+
+Deno.test('dua submit bersamaan untuk jadwal yang sama -> satu menang, satu DUPLICATE', async () => {
+  await svc.from('schedule').insert(extraSchedule('SCH-Y1', future));
+  const form = (await call(pic, 'checklistForm', { schedule_id: 'SCH-Y1' })).data;
+  const rs = await Promise.all([1, 2].map(() => call(pic, 'submitChecklist', { schedule_id: 'SCH-Y1', results: results(form) })));
+  assertEquals(rs.filter((r) => r.success).length, 1);
+  const lose = rs.find((r) => !r.success)!;
+  assertEquals([lose.code, lose.message.startsWith('Jadwal')], ['DUPLICATE', true]);
+  assertEquals((await rows('checklist_header')).filter((h) => h.schedule_id === 'SCH-Y1').length, 1);
+});
+
+Deno.test('dua NO OK bersamaan pada checkpoint yang sama -> satu kasus, satu item, occurrence 2', async () => {
+  await svc.from('schedule').insert([extraSchedule('SCH-Y2', future), extraSchedule('SCH-Y3', future)]);
+  const form = (await call(pic, 'checklistForm', { schedule_id: 'SCH-Y2' })).data;
+  const rs = await Promise.all(['SCH-Y2', 'SCH-Y3'].map((id) => call(pic, 'submitChecklist', { schedule_id: id, results: results(form, ['CP-3']) })));
+  assertEquals(rs.map((r) => r.success), [true, true]);
+  assertEquals((await rows('repair_case')).filter((c) => c.asset_id === 'AST-DAILY').length, 1);
+  const its = (await rows('repair_item')).filter((i) => i.checkpoint_id === 'CP-3');
+  assertEquals(its.length, 1);
+  assertEquals(its[0].occurrence_count, '2');
+});
+
+Deno.test('kegagalan di fase tulis -> tidak ada baris tersisa, jadwal tetap OPEN, foto terhapus', async () => {
+  await svc.from('schedule').insert(extraSchedule('SCH-Z', future));
+  const form = (await call(pic, 'checklistForm', { schedule_id: 'SCH-Z' })).data;
+  const tables = ['checklist_header', 'checklist_detail', 'repair_case', 'repair_item', 'repair_log'];
+  const count = async () => Promise.all(tables.map(async (t) => (await rows(t)).length));
+  const objs = async () => (await svc.storage.from('photos').list()).data!.length;
+  const [before, o0] = [await count(), await objs()];
+  // NUL di catatan: ditolak Postgres (jsonb) saat rpc dipanggil, setelah foto diunggah
+  const bad = results(form, ['CP-1']).map((x: any) => x.photo ? { ...x, note: 'x y' } : x);
+  const r = await call(pic, 'submitChecklist', { schedule_id: 'SCH-Z', results: bad });
+  assertEquals(r.success, false);
+  assertEquals(await count(), before);
+  assertEquals(await objs(), o0);
+  assertEquals((await rows('schedule')).find((x) => x.schedule_id === 'SCH-Z').status, 'OPEN');
 });

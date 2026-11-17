@@ -3,7 +3,7 @@ import { notify } from './notify.ts';
 import { savePhoto, trashPhotos } from './photos.ts';
 import { setSetting, settings } from './settings.ts';
 import type { RouteFn, Session } from './types.ts';
-import { addDays, CASE_OPEN, clean, DEPTS, err, ids, num, opDate, pad, pts, shiftOf, SHIFTS, ts, uid } from './util.ts';
+import { addDays, CASE_OPEN, clean, DEPTS, err, ids, num, opDate, pts, shiftOf, SHIFTS, ts, uid } from './util.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -110,54 +110,6 @@ export async function recomputeCase(c: Row): Promise<string | null> {
   return null;
 }
 
-/** Satu kasus terbuka per alat (unique index); insert kalah balapan (23505) -> muat ulang & gabungkan, maks 3 kali. */
-export async function mergeFindings(asset: Row, noks: Row[], nowStr: string): Promise<Row> {
-  const cps = byKey(await selectAll('master_checkpoint', (q) => q.eq('asset_id', asset.asset_id)), 'checkpoint_id');
-  let c: Row | undefined;
-  for (let i = 0; i < 3 && !c; i++) {
-    [c] = await selectAll('repair_case', (q) => q.eq('asset_id', asset.asset_id).in('status', CASE_OPEN));
-    if (c) break;
-    const max = (await selectAll('repair_case')).reduce((m, x) => Math.max(m, num(/^CASE-(\d+)$/.exec(x.case_id)?.[1])), 0);
-    const row = { case_id: 'CASE-' + pad(max + 1, 5), asset_id: asset.asset_id, asset_name_snapshot: asset.asset_name, opened_at: nowStr,
-      status: 'PERLU_PERBAIKAN', first_finding_at: nowStr, last_activity_at: nowStr, closed_at: '', rework_count: '0', cycle_no: '1' };
-    const { error } = await db.from('repair_case').insert(row);
-    if (!error) c = row;
-    else if (error.code !== '23505') throw new Error('insert repair_case: ' + error.message);
-  }
-  if (!c) throw new Error('mergeFindings: gagal membuat/memuat kasus terbuka setelah 3 percobaan');
-  const items = await selectAll('repair_item', (q) => q.eq('case_id', c!.case_id));
-  const fresh: Row[] = [], touched: Row[] = [];
-  for (const d of noks) {
-    let it = items.find((x) => x.checkpoint_id === d.checkpoint_id) || fresh.find((x) => x.checkpoint_id === d.checkpoint_id);
-    if (it) {
-      it.occurrence_count = String(num(it.occurrence_count) + 1);
-      it.last_detail_id = d.detail_id;
-      if (it.status === 'DONE') { // NO OK berulang setelah selesai diperbaiki & sebelum Head approve -> buka lagi
-        await logRepair(c, it, 'REOPEN_NOK', 'NO OK berulang pada checklist ' + d.checklist_id, nowStr, 'SYSTEM');
-        resetItem(it);
-      }
-      if (!fresh.includes(it) && !touched.includes(it)) touched.push(it);
-    } else {
-      it = { case_item_id: uid('CI'), case_id: c.case_id, checkpoint_id: d.checkpoint_id, point_name_snapshot: d.point_name_snapshot,
-        department: cps[d.checkpoint_id].repair_department, status: 'OPEN', claimed_by_person_id: '', claimed_by_name_snapshot: '', repair_action: '',
-        started_at: '', completed_at: '', after_photo_file_id: '', occurrence_count: '1', first_detail_id: d.detail_id, last_detail_id: d.detail_id,
-        rework_count: '0', last_reject_note: '', created_at: nowStr };
-      fresh.push(it);
-    }
-    d.case_id = c.case_id; d.case_item_id = it.case_item_id;
-  }
-  await insertRows('repair_item', fresh);
-  for (const it of touched) {
-    const { error } = await db.from('repair_item').upsert(it, { onConflict: 'case_item_id' });
-    if (error) throw new Error('upsert repair_item: ' + error.message);
-  }
-  c.last_activity_at = nowStr;
-  await recomputeCase(c);
-  const { error } = await db.from('repair_case').update({ last_activity_at: c.last_activity_at, status: c.status, cycle_no: c.cycle_no }).eq('case_id', c.case_id);
-  if (error) throw new Error('update repair_case: ' + error.message);
-  return c;
-}
-
 // ---- Tahap 1: checklist ----
 const worklist: RouteFn = async (s) => {
   await ensureSchedules();
@@ -217,43 +169,41 @@ const submitChecklist: RouteFn = async (s, a) => {
   const asset = (await assetMap())[sch.asset_id];
   const checklistId = 'CL-' + nowStr.replace(/\D/g, '') + '-' + crypto.randomUUID().slice(0, 4).toUpperCase();
   const photos: Record<string, { id: string; url: string }> = {};
-  let claimed = false;
   try {
     for (const c of v.cps) {
       const r = v.byId[c.checkpoint_id];
       if (r.result === 'NO OK') photos[c.checkpoint_id] = await savePhoto(r.photo, asset, 'CHECKLIST_NO_OK_' + c.checkpoint_id + '_' + checklistId);
     }
-    // klaim jadwal: hanya satu pemanggil yang menang
-    if (!await updateWhere('schedule', { status: 'DONE', checklist_id: checklistId, closed_at: nowStr, processed_at: nowStr }, { schedule_id: sch.schedule_id, status: 'OPEN' }))
-      throw err('Jadwal sudah diperiksa', 'DUPLICATE');
-    claimed = true;
     const details = v.cps.map((c) => {
       const r = v.byId[c.checkpoint_id], p = photos[c.checkpoint_id];
-      return { detail_id: uid('CD'), checklist_id: checklistId, checkpoint_id: c.checkpoint_id, point_name_snapshot: c.point_name, result: r.result,
-        photo_file_id: p ? p.id : '', photo_url: p ? p.url : '', finding_note: String(r.note || '').trim().slice(0, 500), case_id: '', case_item_id: '', recorded_at: nowStr };
+      return { detail_id: uid('CD'), checkpoint_id: c.checkpoint_id, point_name: c.point_name, result: r.result,
+        photo_file_id: p ? p.id : '', photo_url: p ? p.url : '', note: String(r.note || '').trim().slice(0, 500) };
     });
     const noks = details.filter((d) => d.result === 'NO OK');
-    const cs = noks.length ? await mergeFindings(asset, noks, nowStr) : null;
-    await insertRows('checklist_detail', details);
-    await insertRows('checklist_header', [{ checklist_id: checklistId, schedule_id: sch.schedule_id, asset_id: asset.asset_id, asset_name_snapshot: asset.asset_name,
-      operational_date: sch.operational_date, shift_code: sch.shift_code, checker_person_id: s!.person_id, checker_name_snapshot: s!.name, checker_role: s!.role,
-      submitted_at: nowStr, ok_count: String(details.length - noks.length), nok_count: String(noks.length), overall_result: noks.length ? 'NO OK' : 'OK' }]);
+    // Seluruh fase tulis = satu transaksi Postgres (klaim jadwal, header/detail, kasus/item, log). 23505 = kasus dibuat transaksi lain -> ulangi.
+    const payload = { schedule_id: sch.schedule_id, checklist_id: checklistId, now_str: nowStr, checker: { person_id: s!.person_id, name: s!.name, role: s!.role }, details };
+    let out: Row | null = null;
+    for (let i = 0; i < 3 && !out; i++) {
+      const { data, error } = await db.rpc('submit_checklist', { p: payload });
+      if (!error) out = data;
+      else if (error.message.includes('SCHEDULE_DUPLICATE')) throw err('Jadwal sudah diperiksa', 'DUPLICATE');
+      else if (error.code !== '23505' || i === 2) throw new Error('submit_checklist: ' + error.message);
+    }
+    const cs = out!.case_id ? { case_id: out!.case_id as string } : null;
 
     if (cs) { // notifikasi setelah data tersimpan; kegagalan tidak membatalkan checklist
       const cpm = byKey(v.cps, 'checkpoint_id');
       const appUrl = Deno.env.get('APP_URL');
       const base = { alat: asset.asset_name, pic: s!.name, waktu: nowStr.slice(0, 16), kasus: cs.case_id, link: appUrl ? appUrl + '?case=' + cs.case_id : '-' };
-      try {
-        if ((await settings()).NOK_FORMAT === 'ASSET') {
-          await notify('NOK', 'NOKA-' + checklistId, { ...base, daftar: noks.map((d) => '- ' + d.point_name_snapshot + ' [' + cpm[d.checkpoint_id].repair_department + ']' + (d.finding_note ? ': ' + d.finding_note : '')).join('\n') }, 'TPL_NOK_ASSET');
-        } else {
-          for (const d of noks) await notify('NOK', 'NOK-' + d.detail_id, { ...base, checkpoint: d.point_name_snapshot, departemen: cpm[d.checkpoint_id].repair_department, catatan: d.finding_note || '-' });
-        }
-      } catch (e) { console.error('notify NOK: ' + e); }
+      const safe = (p: Promise<void>) => p.catch((e) => console.error('notify NOK: ' + e));
+      if ((await settings().catch(() => ({ NOK_FORMAT: 'POINT' }))).NOK_FORMAT === 'ASSET') {
+        await safe(notify('NOK', 'NOKA-' + checklistId, { ...base, daftar: noks.map((d) => '- ' + d.point_name + ' [' + cpm[d.checkpoint_id].repair_department + ']' + (d.note ? ': ' + d.note : '')).join('\n') }, 'TPL_NOK_ASSET'));
+      } else {
+        for (const d of noks) await safe(notify('NOK', 'NOK-' + d.detail_id, { ...base, checkpoint: d.point_name, departemen: cpm[d.checkpoint_id].repair_department, catatan: d.note || '-' }));
+      }
     }
     return { checklist_id: checklistId, nok: noks.length, case_id: cs ? cs.case_id : '' };
   } catch (e) {
-    if (claimed) await updateWhere('schedule', { status: 'OPEN', checklist_id: '', closed_at: '', processed_at: '' }, { schedule_id: sch.schedule_id, checklist_id: checklistId }).catch(() => 0);
     await trashPhotos(Object.values(photos).map((p) => p.id));
     throw e;
   }
