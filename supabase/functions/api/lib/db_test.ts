@@ -1,7 +1,9 @@
 import { assertEquals } from 'jsr:@std/assert@1';
+import { assertDestructiveAllowed } from '../../../../tests/guard.ts';
 import { db, insertRows, selectAll, updateWhere } from './db.ts';
 
 Deno.test('selectAll membaca > 1.000 baris; updateWhere hanya klaim sekali', async () => {
+  assertDestructiveAllowed();
   const p = 'T2-' + crypto.randomUUID().slice(0, 8) + '-';
   const rows = Array.from({ length: 1205 }, (_, i) => ({ schedule_id: p + String(i).padStart(5, '0'), asset_id: 'T2' }));
   try {

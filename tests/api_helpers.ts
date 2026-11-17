@@ -1,4 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
+import { assertDestructiveAllowed } from './guard.ts';
+
+export { assertDestructiveAllowed };
 
 export type ApiResult = { success: boolean; data: any; message: string; code: string };
 
@@ -24,6 +27,7 @@ export type Fixture = Record<string, Record<string, string>[]>;
 
 /** Hapus SEMUA baris semua tabel lalu insert fixture. Menolak jalan bila ada MIGRATED_AT (data produksi). */
 export async function seed(fixture: Fixture = BASE_FIXTURE): Promise<void> {
+  assertDestructiveAllowed();
   const g = await svc.from('system_settings').select('setting_key').eq('setting_key', 'MIGRATED_AT');
   if (g.error) throw new Error('guard: ' + g.error.message);
   if (g.data.length) throw new Error('seed() ditolak: MIGRATED_AT ada di system_settings (data produksi)');

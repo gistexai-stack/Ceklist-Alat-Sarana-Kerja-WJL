@@ -4,6 +4,8 @@ import { audit, settings } from './settings.ts';
 import type { RouteFn, Session } from './types.ts';
 import { clean, err, num, ts, uid } from './util.ts';
 
+/** Batas sel Excel 32.767 karakter. */
+const cap = (r: Record<string, unknown>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && v.length > 32767 ? v.slice(0, 32767) : v]));
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const DAY = 86400;
 
@@ -11,7 +13,7 @@ const DAY = 86400;
 async function buildWorkbook(): Promise<Uint8Array> {
   const wb = XLSX.utils.book_new();
   for (const t of Object.keys(PK).filter((k) => k !== 'session' && k !== 'login_fail')) {
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(await selectAll(t)), t);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((await selectAll(t)).map(cap)), t);
   }
   return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }

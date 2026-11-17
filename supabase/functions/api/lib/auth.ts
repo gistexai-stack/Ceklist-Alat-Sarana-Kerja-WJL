@@ -78,7 +78,7 @@ const changePassword: RouteFn = async (s, a) => {
   if (await hash(a.oldPassword || '', acc.salt) !== acc.password_hash) throw err('Password lama salah');
   const salt = crypto.randomUUID();
   await upsertRows('master_account', [{ ...acc, salt, password_hash: await hash(a.newPassword, salt), updated_at: ts() }]);
-  await audit(s, 'CHANGE_PASSWORD', 'ACCOUNT', acc.account_id, null, null, 'Ganti password sendiri');
+  try { await audit(s, 'CHANGE_PASSWORD', 'ACCOUNT', acc.account_id, null, null, 'Ganti password sendiri'); } catch (e) { console.error('audit CHANGE_PASSWORD: ' + e); }
   return true;
 };
 

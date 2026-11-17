@@ -1,6 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 
+import { assertDestructiveAllowed } from './guard.ts';
+
+assertDestructiveAllowed(); // tes ini menulis ke DB (termasuk token Fonnte)
+
 const url = Deno.env.get('SUPABASE_URL')!;
 const svc = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const anon = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!);

@@ -38,7 +38,7 @@ async function scope(f: Row) {
   };
   const sch = (await selectAll('schedule')).filter((r) =>
     r.status !== 'BATAL' && r.operational_date >= from && r.operational_date <= to && assetOk(r.asset_id) && (!f.shift || r.shift_code === f.shift))
-    .map((r) => ({ ...r, eff: effStatus(r, now) }));
+    .map((r): Row => ({ ...r, eff: effStatus(r, now) }));
   const heads = (await selectAll('checklist_header')).filter((h) =>
     h.operational_date >= from && h.operational_date <= to && assetOk(h.asset_id) && (!f.shift || h.shift_code === f.shift));
   const hm = mapBy(heads, 'checklist_id');
@@ -113,7 +113,7 @@ async function dashboardData(f: Row, sc0?: Scope) {
     });
   });
   sc.heads.forEach((h) => { if (pic[h.checker_person_id]) pic[h.checker_person_id].byMe++; });
-  const picPerf = Object.values(pic).map((p) => ({ ...p, coverage: pct(p.covered, p.missed) }))
+  const picPerf = Object.values(pic).map((p): Row => ({ ...p, coverage: pct(p.covered, p.missed) }))
     .filter((p) => !f.pic_id || p.name === (pm[f.pic_id] || {}).display_name)
     .sort((a, b) => Number(a.coverage === null) - Number(b.coverage === null) || a.coverage! - b.coverage!);
   // Performa departemen

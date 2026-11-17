@@ -12,3 +12,13 @@ Console browser harus tanpa error di setiap langkah.
 - [ ] Approval SPV lalu Head -> kasus Selesai; foto sebelum/sesudah tampil di drawer kasus.
 - [ ] Laporan -> Excel & PDF terunduh, berisi baris meta + data; tautan foto "Buka" bisa dibuka.
 - [ ] Pengaturan -> Backup sekarang -> log backup berisi tautan unduh .xlsx; tombol "Buka Storage Supabase".
+
+## Hari H (tambahan)
+
+- [ ] Migration cron bernama `20261118000001_cron.sql` (harus lebih baru dari migration yang sudah diterapkan, agar tidak ditolak `db push`).
+- [ ] Set Script Property `MIG_FINAL=TRUE`, jalankan `migrasiJalankan()` sampai SELESAI, lalu `migrasiLaporan()`: pastikan "Foto gagal: 0".
+- [ ] Pastikan `system_settings.MIGRATED_AT` ada sebelum merge ke `main`.
+- [ ] Set `APP_URL` ke domain final (bukan URL preview).
+- [ ] Isi token Fonnte hanya pada hari cutover.
+- [ ] Jangan jalankan tes integrasi / `seed()` terhadap project ini (lihat `tests/README.md`).
+- [ ] Setelah malam pertama: pastikan ada baris AUTO di log backup.

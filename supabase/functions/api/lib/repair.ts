@@ -4,7 +4,7 @@ import { savePhoto, trashPhotos } from './photos.ts';
 import { checkableAssetIds } from './schedule.ts';
 import { audit } from './settings.ts';
 import type { RouteFn, Session } from './types.ts';
-import { clean, err, hoursBetween, num, ts } from './util.ts';
+import { clean, err, hoursBetween, isDefiniteFailure, num, ts } from './util.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -31,7 +31,7 @@ export async function rpc(fn: string, p: object): Promise<Row> {
     const m = re.exec(error.message);
     if (m) throw mk(m);
   }
-  throw new Error(fn + ': ' + error.message);
+  throw Object.assign(new Error(fn + ': ' + error.message), { pgCode: error.code });
 }
 
 export function caseVars(c: Row, extra: Record<string, string> = {}): Record<string, string> {
@@ -95,7 +95,9 @@ const completeItem: RouteFn = async (s, a) => {
   try {
     r = await rpc('complete_item', { case_item_id: it.case_item_id, person_id: s!.person_id, name: s!.name, action: action.slice(0, 1000), photo_id: photo.id, now_str: ts() });
   } catch (e) {
-    try { await trashPhotos([photo.id]); } catch (e2) { console.error('trashPhotos: ' + e2); }
+    // hapus foto hanya bila pasti tidak commit; kegagalan transport -> pertahankan foto
+    if (isDefiniteFailure(e)) { try { await trashPhotos([photo.id]); } catch (e2) { console.error('trashPhotos: ' + e2); } }
+    else console.error('complete_item gagal tak pasti, foto dipertahankan: ' + e);
     throw e;
   }
   if (r.ev === 'TO_SPV') await safeNotify('SPV', 'SPV-' + c.case_id + '-' + r.cycle_no, caseVars({ ...c, status: r.case_status }));

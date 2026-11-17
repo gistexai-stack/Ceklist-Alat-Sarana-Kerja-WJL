@@ -1,11 +1,12 @@
 import { assert, assertEquals, assertStringIncludes } from 'jsr:@std/assert@1';
 import * as XLSX from 'npm:xlsx@0.18.5';
-import { API_URL, BASE_FIXTURE, call, PASSWORD, seed, svc } from './api_helpers.ts';
+import { API_URL, assertDestructiveAllowed, BASE_FIXTURE, call, PASSWORD, seed, svc } from './api_helpers.ts';
 import { opDate, ts } from '../supabase/functions/api/lib/util.ts';
 
 const OLD = 'OLD/DB_BACKUP_OLD.xlsx';
 /** Hapus hanya objek yang dibuat tes ini: OLD + file_id baris backup_log dengan created_at >= awal tes. */
 const cleanup = async (since: string) => {
+  assertDestructiveAllowed();
   const g = await svc.from('system_settings').select('setting_key').eq('setting_key', 'MIGRATED_AT');
   if (g.error || g.data.length) throw new Error('cleanup ditolak: MIGRATED_AT ada / guard gagal');
   const rows = (await svc.from('backup_log').select('file_id').gte('created_at', since)).data ?? [];

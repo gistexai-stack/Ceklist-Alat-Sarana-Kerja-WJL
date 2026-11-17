@@ -3,7 +3,7 @@ import { notify } from './notify.ts';
 import { savePhoto, trashPhotos } from './photos.ts';
 import { setSetting, settings } from './settings.ts';
 import type { RouteFn, Session } from './types.ts';
-import { addDays, CASE_OPEN, clean, DEPTS, err, ids, num, opDate, pts, shiftOf, SHIFTS, ts, uid } from './util.ts';
+import { addDays, CASE_OPEN, clean, DEPTS, err, ids, isDefiniteFailure, num, opDate, pts, shiftOf, SHIFTS, ts, uid } from './util.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -145,6 +145,7 @@ const submitChecklist: RouteFn = async (s, a) => {
   const asset = (await assetMap())[sch.asset_id];
   const checklistId = 'CL-' + nowStr.replace(/\D/g, '') + '-' + crypto.randomUUID().slice(0, 4).toUpperCase();
   const photos: Record<string, { id: string; url: string }> = {};
+  let out: Row | null = null, rpcStarted = false, noks: Row[] = [];
   try {
     for (const c of v.cps) {
       const r = v.byId[c.checkpoint_id];
@@ -155,19 +156,25 @@ const submitChecklist: RouteFn = async (s, a) => {
       return { detail_id: uid('CD'), checkpoint_id: c.checkpoint_id, point_name: c.point_name, result: r.result,
         photo_file_id: p ? p.id : '', photo_url: p ? p.url : '', note: String(r.note || '').trim().slice(0, 500) };
     });
-    const noks = details.filter((d) => d.result === 'NO OK');
+    noks = details.filter((d) => d.result === 'NO OK');
     // Seluruh fase tulis = satu transaksi Postgres (klaim jadwal, header/detail, kasus/item, log). 23505 = kasus dibuat transaksi lain -> ulangi.
     const payload = { schedule_id: sch.schedule_id, checklist_id: checklistId, now_str: nowStr, checker: { person_id: s!.person_id, name: s!.name, role: s!.role }, details };
-    let out: Row | null = null;
+    rpcStarted = true;
     for (let i = 0; i < 3 && !out; i++) {
       const { data, error } = await db.rpc('submit_checklist', { p: payload });
       if (!error) out = data;
       else if (error.message.includes('SCHEDULE_DUPLICATE')) throw err('Jadwal sudah diperiksa', 'DUPLICATE');
-      else if (error.code !== '23505' || i === 2) throw new Error('submit_checklist: ' + error.message);
+      else if (error.code !== '23505' || i === 2) throw Object.assign(new Error('submit_checklist: ' + error.message), { pgCode: error.code });
     }
-    const cs = out!.case_id ? { case_id: out!.case_id as string } : null;
-
-    if (cs) { // notifikasi setelah data tersimpan; kegagalan tidak membatalkan checklist
+  } catch (e) {
+    // Foto dihapus hanya bila pasti tidak ada commit. Kegagalan transport (respons hilang) bisa saja sudah commit: foto dipertahankan (yatim lebih murah daripada bukti hilang).
+    if (!rpcStarted || isDefiniteFailure(e)) await trashPhotos(Object.values(photos).map((p) => p.id));
+    else console.error('submit_checklist gagal tak pasti, foto dipertahankan: ' + e);
+    throw e;
+  }
+  const cs = out!.case_id ? { case_id: out!.case_id as string } : null;
+  if (cs) {
+    try { // notifikasi setelah data tersimpan; kegagalan tidak membatalkan checklist
       const cpm = byKey(v.cps, 'checkpoint_id');
       const appUrl = Deno.env.get('APP_URL');
       const base = { alat: asset.asset_name, pic: s!.name, waktu: nowStr.slice(0, 16), kasus: cs.case_id, link: appUrl ? appUrl + '?case=' + cs.case_id : '-' };
@@ -177,12 +184,9 @@ const submitChecklist: RouteFn = async (s, a) => {
       } else {
         for (const d of noks) await safe(notify('NOK', 'NOK-' + d.detail_id, { ...base, checkpoint: d.point_name, departemen: cpm[d.checkpoint_id].repair_department, catatan: d.note || '-' }));
       }
-    }
-    return { checklist_id: checklistId, nok: noks.length, case_id: cs ? cs.case_id : '' };
-  } catch (e) {
-    await trashPhotos(Object.values(photos).map((p) => p.id));
-    throw e;
+    } catch (e) { console.error('notify NOK: ' + e); }
   }
+  return { checklist_id: checklistId, nok: noks.length, case_id: cs ? cs.case_id : '' };
 };
 
 const todaySchedules: RouteFn = async (_s, a) => {

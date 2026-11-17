@@ -8,6 +8,7 @@ import { clean, DEPTS, err, UserError, GUEST, ids, LOGGED, num, pad, ts } from '
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
 
+const dirty = (by: string) => setSetting('GEN_DIRTY', 'TRUE', by).catch((e) => console.error('GEN_DIRTY: ' + e));
 /** Audit pasca-commit: kegagalan audit tidak boleh mengubah tulisan yang sudah commit menjadi error. */
 export async function safeAudit(...a: Parameters<typeof audit>): Promise<void> {
   try { await audit(...a); } catch (e) { console.error('audit ' + a[1] + ': ' + e); }
@@ -95,9 +96,9 @@ const saveAsset: RouteFn = async (s, a) => {
   }
   if (wasActive && row.active === 'FALSE') { // batalkan jadwal terbuka alat yang dinonaktifkan
     const { error } = await db.from('schedule').update({ status: 'BATAL', processed_at: nowStr }).match({ asset_id: row.asset_id, status: 'OPEN' });
-    if (error) throw new Error('cancel schedule: ' + error.message);
+    if (error) console.error('cancel schedule: ' + error.message); // data sudah tersimpan; jangan ubah jadi galat
   }
-  await setSetting('GEN_DIRTY', 'TRUE', s!.name);
+  await dirty(s!.name);
   await safeAudit(s, isNew ? 'CREATE_ASSET' : 'UPDATE_ASSET', 'MASTER_ASSET', row.asset_id, before, { asset: clean(row), checkpoints: list.length });
   await regen();
   return { asset_id: row.asset_id };
@@ -118,7 +119,7 @@ const saveMapping: RouteFn = async (s, a) => {
   }
   await upsertRows('master_checkpoint', patch);
   if (changed.length) {
-    await setSetting('GEN_DIRTY', 'TRUE', s!.name);
+    await dirty(s!.name);
     await safeAudit(s, 'UPDATE_MAPPING', 'MASTER_CHECKPOINT', changed.length + ' checkpoint', null, changed);
   }
   await regen();

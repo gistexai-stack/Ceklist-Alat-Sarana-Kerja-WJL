@@ -9,7 +9,7 @@ if (!(window.google && google.script && google.script.run)) {
   window.google = { script: { run: mk(null, null) } };
 }
 
-const BOOT = { installed: true, caseParam: (/^CASE-d{1,8}$/.exec(new URLSearchParams(location.search).get('case') || '') || [''])[0] }; // di GAS diisi doGet; di sini dicek ke server saat mulai
+const BOOT = { installed: true, caseParam: (/^CASE-\d{1,8}$/.exec(new URLSearchParams(location.search).get('case') || '') || [''])[0] }; // di GAS diisi doGet; di sini dicek ke server saat mulai
 const S = { navSeq: 0, forceFresh: false, token: null, me: null, look: null, page: '', dirty: false, charts: [], photos: {}, ck: null };
 const ROLE_LABEL = { ADMIN: 'Admin', SPV: 'SPV', HEAD: 'Head', PIC: 'PIC (tamu)', MAINTENANCE: 'Maintenance (tamu)', UTILITY: 'Utility (tamu)' };
 const CASE_ST = { PERLU_PERBAIKAN: ['Perlu Perbaikan', 'c-bad'], SEDANG_DIPERBAIKI: ['Sedang Diperbaiki', 'c-warn'], MENUNGGU_SPV: ['Menunggu Approval SPV', 'c-info'], MENUNGGU_HEAD: ['Menunggu Approval Head', 'c-info'], SELESAI: ['Selesai', 'c-ok'] };
@@ -144,7 +144,8 @@ function confirmDlg(title, html, okLabel, danger) {
     ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-close]')) res(false); });
   });
 }
-async function photoUrl(id) { if (!S.photos[id]) S.photos[id] = await call('photo', { id }); return S.photos[id]; }
+// URL bertanda tangan berlaku 1 jam: cache 50 menit lalu ambil ulang
+async function photoUrl(id) { const c = S.photos[id]; if (!c || Date.now() - c.t > 50 * 60e3) S.photos[id] = { t: Date.now(), u: await call('photo', { id }) }; return S.photos[id].u; }
 async function hydrate(el) {
   for (const b of $$('[data-photo]', el)) {
     const id = b.getAttribute('data-photo'); if (!id) continue;

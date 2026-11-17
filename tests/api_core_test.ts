@@ -1,7 +1,7 @@
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 import { API_URL, call, seed } from './api_helpers.ts';
 
-await seed();
+Deno.test('seed', async () => { await seed(); });
 
 Deno.test('publicInfo tanpa token', async () => {
   const r = await call(null, 'publicInfo');

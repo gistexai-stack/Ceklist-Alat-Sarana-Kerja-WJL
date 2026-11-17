@@ -40,5 +40,7 @@ export class UserError extends Error {
   code: string;
   constructor(message: string, code: string) { super(message); this.code = code; }
 }
+/** Kegagalan pasti (galat bisnis / galat Postgres bercode): transaksi dijamin tidak commit. Kegagalan transport = tidak pasti. */
+export const isDefiniteFailure = (e: unknown): boolean => e instanceof UserError || !!(e as { pgCode?: string })?.pgCode;
 export const err = (message: string, code = 'VALIDATION'): UserError => new UserError(message, code);
 export const fail = (message: string, code: string): ApiResult => ({ success: false, data: null, message, code });
