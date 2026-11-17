@@ -285,7 +285,7 @@
 ### Task 11: Cutover
 
 **Files:**
-- Create: `supabase/migrations/20261116000003_cron.sql` (dibuat di task ini, tidak sebelumnya)
+- Create: `supabase/migrations/20261118000001_cron.sql` (dibuat di task ini, tidak sebelumnya)
 - Modify: `docs/superpowers/cutover-checklist.md` (dibuat di Task 9; tambah bagian "Hari H" dan "Rollback")
 
 **Interfaces:**
@@ -294,13 +294,13 @@
 - [ ] **Step 1: Tambahkan ke `cutover-checklist.md`** urutan Hari H di bawah dan langkah rollback (hari H saja).
 - [ ] **Step 2: Hari H (bersama pemilik)**
   1. Umumkan aplikasi berhenti; pemilik mematikan 3 trigger Apps Script (menu Triggers di editor; `Code.gs` tidak diubah).
-  2. Hapus data uji: jalankan `seed({})` (kosong) — pengaman `MIGRATED_AT` memastikan ini hanya mungkin sebelum migrasi final.
-  3. Pemilik menjalankan `migrasiJalankan()` sampai SELESAI, lalu `migrasiLaporan()` → semua cocok.
-  4. Pemilik mengisi token Fonnte di Pengaturan (aplikasi baru) atau lewat `set_fonnte_token`; set `npx supabase secrets set APP_URL=<domain final>`.
+  2. Controller memverifikasi (query baca-saja) bahwa project tidak memuat baris data uji (mis. username `admin`/`spv`/`head` di `master_account` dengan nama fixture, aset `AST-DAILY`/`AST-SHIFT`) sebelum run final; bila ada, dihapus berdasarkan id persis hanya setelah pemilik mengonfirmasi. JANGAN pernah menjalankan `seed()` / tes integrasi terhadap project ini (guard `ALLOW_DESTRUCTIVE_TESTS` + `MIGRATED_AT`, lihat `tests/README.md`).
+  3. Set Script Property `MIG_FINAL=TRUE`, pemilik menjalankan `migrasiJalankan()` sampai SELESAI, lalu `migrasiLaporan()` → semua cocok dan "Foto gagal: 0" (MIGRATED_AT hanya ditulis bila foto gagal = 0).
+  4. Isi token Fonnte HANYA pada hari cutover (Pengaturan aplikasi baru atau `set_fonnte_token`); set `npx supabase secrets set APP_URL=<domain final>` (domain final, bukan preview).
   5. `npx supabase db push` (cron SQL) → `select jobname from cron.job` berisi 3 job.
-  6. Merge `supabase-migration` ke `main` dan push → Vercel deploy; cek situs live: login akun asli, dashboard, buka 1 kasus lama dengan foto.
+  6. Pastikan `system_settings.MIGRATED_AT` ada sebelum merge. Merge `supabase-migration` ke `main` dan push → Vercel deploy; cek situs live: login akun asli, dashboard, buka 1 kasus lama dengan foto.
   7. Pemilik menjalankan `migrasiBersihkan()`.
-- [ ] **Step 3: Verifikasi 24 jam** — keesokan hari: `cron.job_run_details` menunjukkan cronHourly sukses tiap jam, backup 02:00 ada di log backup, pengingat 07:30 tercatat di log notifikasi.
+- [ ] **Step 3: Verifikasi 24 jam** — keesokan hari: `cron.job_run_details` menunjukkan cronHourly sukses tiap jam, backup 02:00 ada di log backup, pengingat 07:30 tercatat di log notifikasi; setelah malam pertama, log backup berisi baris dengan penanda AUTO.
 - [ ] **Step 4: Commit** — `git commit -m "Enable Supabase cron and document cutover"`.
 
-**Rollback (hanya hari H):** kembalikan `API_URL` di `web/script.js` ke URL Apps Script `…AKfycbzT…/exec`, push ke `main`, nyalakan lagi 3 trigger Apps Script, `select cron.unschedule(jobname) from cron.job`. Data yang terlanjur dicatat di Supabase hari itu dicatat manual oleh pemilik.
+**Rollback (hanya hari H):** kembalikan `API_URL` di `web/script.js` ke URL Apps Script `…AKfycbzT…/exec`, push ke `main`, nyalakan lagi 3 trigger Apps Script, `select cron.unschedule(jobname) from cron.job where jobname like 'api-cron-%';`. Data yang terlanjur dicatat di Supabase hari itu dicatat manual oleh pemilik.
