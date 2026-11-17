@@ -128,3 +128,24 @@ Deno.test('notify bersamaan dengan event_id sama -> tepat 1 baris', async () => 
   await Promise.all([1, 2, 3].map(() => notify('NOK', 'EV-RACE', { alat: 'A' })));
   assertEquals((await rows('notification_log')).length, 1);
 });
+
+Deno.test('saveAsset baru gagal di checkpoint -> alat baru dibatalkan (tidak ada alat aktif tanpa checkpoint)', async () => {
+  // CHK-007 sudah ada dan jumlah checkpoint 6 -> id berikutnya selalu CHK-007 (bentrok PK 3x -> CONFLICT)
+  const stray = { checkpoint_id: 'CHK-007', asset_id: 'AST-DAILY', point_name: 'x', display_order: '9', target_label: '', repair_department: 'UTILITY', active: 'FALSE', created_at: '', updated_at: '' };
+  await seed({ ...BASE_FIXTURE, master_checkpoint: [...BASE_FIXTURE.master_checkpoint, stray] });
+  const admin = await login('admin');
+  const r = await call(admin, 'saveAsset', { asset: { asset_name: 'Gagal', schedule_type: 'DAILY', checker_role: 'UTILITY' }, checkpoints: [{ point_name: 'P', repair_department: 'UTILITY' }] });
+  assertEquals([r.success, r.code], [false, 'CONFLICT']);
+  assertEquals((await rows('master_asset')).map((a) => a.asset_id).sort(), ['AST-DAILY', 'AST-SHIFT']);
+  assertEquals((await rows('master_checkpoint')).length, 6);
+});
+
+Deno.test('saveAccount bersamaan dengan username sama -> satu akun, satunya "Username sudah dipakai"', async () => {
+  await seed(BASE_FIXTURE);
+  const admin = await login('admin');
+  const a = (n: string) => call(admin, 'saveAccount', { username: 'kembar', display_name: n, role: 'SPV', password: 'abcdef' });
+  const res = await Promise.all([a('A'), a('B')]);
+  assertEquals((await rows('master_account')).filter((x) => x.username === 'kembar').length, 1);
+  assertEquals(res.filter((x) => x.success).length, 1);
+  assertEquals(res.find((x) => !x.success)!.message, 'Username sudah dipakai');
+});

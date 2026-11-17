@@ -14,12 +14,14 @@ export async function safeAudit(...a: Parameters<typeof audit>): Promise<void> {
 }
 const regen = () => ensureSchedules(true).catch((e) => console.error('ensureSchedules: ' + e));
 /** Insert baris baru dengan id count+1; tabrakan PK (23505, pembuat lain bersamaan) dihitung ulang, maks 3x. */
-async function insertNew(table: string, mk: (count: number) => Row[]): Promise<Row[]> {
+async function insertNew(table: string, mk: (count: number) => Row[], dupMsg = 'Data sudah ada'): Promise<Row[]> {
   for (let i = 0; i < 3; i++) {
     const rows = mk((await selectAll(table)).length);
+    if (!rows.length) return rows;
     const { error } = await db.from(table).insert(rows);
     if (!error) return rows;
     if (error.code !== '23505') throw new Error('insert ' + table + ': ' + error.message);
+    if (!error.message.includes(table + '_pkey')) throw err(dupMsg); // unique index lain (mis. username): jangan di-retry
   }
   throw err('Terjadi bentrokan ID saat menyimpan. Coba lagi.', 'CONFLICT');
 }
@@ -74,8 +76,16 @@ const saveAsset: RouteFn = async (s, a) => {
   });
   if (isNew) row = (await insertNew('master_asset', (n) => [{ ...row, asset_id: 'AST-' + pad(n + 1, 3) }]))[0];
   else await upsertRows('master_asset', [row]);
-  await upsertRows('master_checkpoint', upd);
-  await insertNew('master_checkpoint', (n) => add.map((c, i) => ({ ...c, checkpoint_id: 'CHK-' + pad(n + i + 1, 3), asset_id: row!.asset_id })));
+  try {
+    await upsertRows('master_checkpoint', upd);
+    await insertNew('master_checkpoint', (n) => add.map((c, i) => ({ ...c, checkpoint_id: 'CHK-' + pad(n + i + 1, 3), asset_id: row!.asset_id })));
+  } catch (e) {
+    if (isNew) { // tanpa transaksi: batalkan alat baru agar tidak tersisa alat aktif tanpa checkpoint
+      await db.from('master_checkpoint').delete().eq('asset_id', row.asset_id);
+      await db.from('master_asset').delete().eq('asset_id', row.asset_id);
+    }
+    throw e;
+  }
   if (wasActive && row.active === 'FALSE') { // batalkan jadwal terbuka alat yang dinonaktifkan
     const { error } = await db.from('schedule').update({ status: 'BATAL', processed_at: nowStr }).match({ asset_id: row.asset_id, status: 'OPEN' });
     if (error) throw new Error('cancel schedule: ' + error.message);
@@ -147,7 +157,7 @@ const saveAccount: RouteFn = async (s, a) => {
     if (String(a.password || '').length < 6) throw err('Password awal minimal 6 karakter');
     const salt = crypto.randomUUID();
     const base = { username, display_name, role: a.role, password_hash: await hash(a.password, salt), salt, active: 'TRUE', last_login_at: '', created_at: nowStr, updated_at: nowStr };
-    acc = (await insertNew('master_account', (n) => [{ account_id: 'ACC-' + pad(n + 1, 3), ...base }]))[0];
+    acc = (await insertNew('master_account', (n) => [{ account_id: 'ACC-' + pad(n + 1, 3), ...base }], 'Username sudah dipakai'))[0];
   }
   if (before) await upsertRows('master_account', [acc]);
   await safeAudit(s, before ? 'UPDATE_ACCOUNT' : 'CREATE_ACCOUNT', 'MASTER_ACCOUNT', acc.account_id, before, clean(acc));
