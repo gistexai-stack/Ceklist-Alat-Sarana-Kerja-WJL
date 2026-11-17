@@ -4,6 +4,8 @@ import { APPROVAL_ROUTES } from './approval.ts';
 import { MONITORING_ROUTES } from './monitoring.ts';
 import { MASTER_ROUTES } from './master.ts';
 import { NOTIFY_ROUTES } from './notify.ts';
+import { BACKUP_ROUTES } from './backup.ts';
+import { cronBackup, cronHourly, cronReminder } from './cron.ts';
 import { photo } from './photos.ts';
 import { REPAIR_ROUTES } from './repair.ts';
 import { isMasterReady, SCHEDULE_ROUTES } from './schedule.ts';
@@ -41,11 +43,11 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   // Admin
   masterData: r(['ADMIN'], MASTER_ROUTES.masterData), saveAsset: r(['ADMIN'], MASTER_ROUTES.saveAsset), saveMapping: r(['ADMIN'], MASTER_ROUTES.saveMapping), savePerson: r(['ADMIN'], MASTER_ROUTES.savePerson), saveAccount: r(['ADMIN'], MASTER_ROUTES.saveAccount),
   resetPassword: r(['ADMIN'], MASTER_ROUTES.resetPassword), auditLog: r(['ADMIN'], MASTER_ROUTES.auditLog), settings: r(['ADMIN'], NOTIFY_ROUTES.settings), saveSettings: r(['ADMIN'], NOTIFY_ROUTES.saveSettings), saveFonnteToken: r(['ADMIN'], NOTIFY_ROUTES.saveFonnteToken),
-  testFonnte: r(['ADMIN'], NOTIFY_ROUTES.testFonnte), notifLog: r(['ADMIN'], NOTIFY_ROUTES.notifLog), retryNotif: r(['ADMIN'], NOTIFY_ROUTES.retryNotif), backupNow: r(['ADMIN']), backupLog: r(['ADMIN']),
+  testFonnte: r(['ADMIN'], NOTIFY_ROUTES.testFonnte), notifLog: r(['ADMIN'], NOTIFY_ROUTES.notifLog), retryNotif: r(['ADMIN'], NOTIFY_ROUTES.retryNotif), backupNow: r(['ADMIN'], BACKUP_ROUTES.backupNow), backupLog: r(['ADMIN'], BACKUP_ROUTES.backupLog),
 };
 
-/** Fungsi cron (Task 8) didaftarkan di sini: CRON.nama = async () => ... */
-export const CRON: Record<string, () => Promise<unknown>> = {};
+/** Fungsi cron, dipanggil index.ts dengan token 'CRON' + header x-cron-secret. */
+export const CRON: Record<string, () => Promise<unknown>> = { cronHourly, cronBackup, cronReminder };
 
 // deno-lint-ignore no-explicit-any
 export async function api(token: string | null, action: string, args: Record<string, any> | null): Promise<ApiResult> {
