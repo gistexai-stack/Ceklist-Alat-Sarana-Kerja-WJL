@@ -16,10 +16,13 @@ async function buildWorkbook(): Promise<Uint8Array> {
   return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }
 
+/** URL tanda tangan 1 hari; gagal -> '' (tidak boleh menggagalkan operasi yang sudah commit). */
 const signed = async (path: string): Promise<string> => {
-  const { data, error } = await db.storage.from('backups').createSignedUrl(path, DAY);
-  if (error) throw new Error('signed url: ' + error.message);
-  return data.signedUrl;
+  try {
+    const { data, error } = await db.storage.from('backups').createSignedUrl(path, DAY);
+    if (error) throw new Error(error.message);
+    return data.signedUrl;
+  } catch (e) { console.error('signed url: ' + e); return ''; }
 };
 
 export async function backup(type: 'AUTO' | 'MANUAL', s: Session | null): Promise<{ file_name: string; url: string }> {
@@ -34,17 +37,19 @@ export async function backup(type: 'AUTO' | 'MANUAL', s: Session | null): Promis
     row.file_id = path; row.size_bytes = String(bytes.length);
   } catch (e) { row.status = 'FAILED'; row.message = String(e).slice(0, 300); }
   await insertRows('backup_log', [row]);
-  const days = num((await settings()).BACKUP_RETENTION_DAYS);
-  if (days > 0) {
-    const cut = ts(new Date(d.getTime() - days * 864e5));
-    for (const r of await selectAll('backup_log', (q) => q.eq('status', 'OK').eq('trashed_at', '').neq('file_id', '').lt('created_at', cut))) {
-      const { error } = await db.storage.from('backups').remove([r.file_id]);
-      await updateWhere('backup_log', error ? { message: 'Gagal hapus: ' + error.message } : { trashed_at: ts() }, { backup_id: r.backup_id });
+  try {
+    const days = num((await settings()).BACKUP_RETENTION_DAYS);
+    if (days > 0) {
+      const cut = ts(new Date(d.getTime() - days * 864e5));
+      for (const r of await selectAll('backup_log', (q) => q.eq('status', 'OK').eq('trashed_at', '').neq('file_id', '').lt('created_at', cut))) {
+        const { error } = await db.storage.from('backups').remove([r.file_id]);
+        await updateWhere('backup_log', error ? { message: 'Gagal hapus: ' + error.message } : { trashed_at: ts() }, { backup_id: r.backup_id });
+      }
     }
-  }
+  } catch (e) { console.error('retensi backup: ' + e); }
   if (s) try { await audit(s, 'BACKUP_MANUAL', 'BACKUP', row.backup_id, null, { file: name, status: row.status }, row.message); } catch (e) { console.error(e); }
   if (row.status !== 'OK') throw err('Backup gagal: ' + row.message);
-  return { file_name: name, url: await signed(path) };
+  return { file_name: name, url: s ? await signed(path) : '' };
 }
 
 const backupNow: RouteFn = (s) => backup('MANUAL', s);

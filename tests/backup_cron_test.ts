@@ -4,18 +4,18 @@ import { API_URL, BASE_FIXTURE, call, PASSWORD, seed, svc } from './api_helpers.
 import { opDate, ts } from '../supabase/functions/api/lib/util.ts';
 
 const OLD = 'OLD/DB_BACKUP_OLD.xlsx';
+/** Hapus hanya objek yang dibuat tes ini (path persis dari backup_log + OLD). */
 const cleanup = async () => {
-  const { data } = await svc.storage.from('backups').list();
-  const names = (data ?? []).map((o) => o.name);
-  if (names.length) await svc.storage.from('backups').remove(names);
-  await svc.storage.from('backups').remove([OLD]);
+  const g = await svc.from('system_settings').select('setting_key').eq('setting_key', 'MIGRATED_AT');
+  if (g.error || g.data.length) throw new Error('cleanup ditolak: MIGRATED_AT ada / guard gagal');
+  const paths = [OLD, ...((await svc.from('backup_log').select('file_id')).data ?? []).map((r) => r.file_id).filter(String)];
+  await svc.storage.from('backups').remove(paths);
 };
 const cron = (action: string, secret?: string) =>
   fetch(API_URL, { method: 'POST', headers: { 'content-type': 'text/plain', ...(secret ? { 'x-cron-secret': secret } : {}) }, body: JSON.stringify(['CRON', action, {}]) });
 
 Deno.test('backup: backupNow, isi xlsx, signed url, retensi', async () => {
   await seed({ ...BASE_FIXTURE, system_settings: [{ setting_key: 'BACKUP_RETENTION_DAYS', setting_value: '90', updated_at: '', updated_by: 'T' }] });
-  await cleanup();
   try {
     const tok = (await call(null, 'login', { username: 'admin', password: PASSWORD })).data.token;
     // backup lama 100 hari
