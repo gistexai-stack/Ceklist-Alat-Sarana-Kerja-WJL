@@ -4,18 +4,21 @@ import { API_URL, BASE_FIXTURE, call, PASSWORD, seed, svc } from './api_helpers.
 import { opDate, ts } from '../supabase/functions/api/lib/util.ts';
 
 const OLD = 'OLD/DB_BACKUP_OLD.xlsx';
-/** Hapus hanya objek yang dibuat tes ini (path persis dari backup_log + OLD). */
-const cleanup = async () => {
+/** Hapus hanya objek yang dibuat tes ini: OLD + file_id baris backup_log dengan created_at >= awal tes. */
+const cleanup = async (since: string) => {
   const g = await svc.from('system_settings').select('setting_key').eq('setting_key', 'MIGRATED_AT');
   if (g.error || g.data.length) throw new Error('cleanup ditolak: MIGRATED_AT ada / guard gagal');
-  const paths = [OLD, ...((await svc.from('backup_log').select('file_id')).data ?? []).map((r) => r.file_id).filter(String)];
-  await svc.storage.from('backups').remove(paths);
+  const rows = (await svc.from('backup_log').select('file_id').gte('created_at', since)).data ?? [];
+  const paths = [OLD, ...rows.map((r) => r.file_id).filter(String)];
+  const { error } = await svc.storage.from('backups').remove(paths);
+  if (error) { console.error('cleanup backups GAGAL: ' + error.message + ' paths=' + paths.join(',')); throw new Error('cleanup gagal'); }
 };
 const cron = (action: string, secret?: string) =>
   fetch(API_URL, { method: 'POST', headers: { 'content-type': 'text/plain', ...(secret ? { 'x-cron-secret': secret } : {}) }, body: JSON.stringify(['CRON', action, {}]) });
 
 Deno.test('backup: backupNow, isi xlsx, signed url, retensi', async () => {
   await seed({ ...BASE_FIXTURE, system_settings: [{ setting_key: 'BACKUP_RETENTION_DAYS', setting_value: '90', updated_at: '', updated_by: 'T' }] });
+  const since = ts(new Date(Date.now() - 1000));
   try {
     const tok = (await call(null, 'login', { username: 'admin', password: PASSWORD })).data.token;
     // backup lama 100 hari
@@ -49,7 +52,7 @@ Deno.test('backup: backupNow, isi xlsx, signed url, retensi', async () => {
     assertEquals(bl.data.find((x: { backup_id: string }) => x.backup_id === 'BKP-OLD').url, undefined);
     assertEquals(bl.data.some((x: Record<string, unknown>) => 'password_hash' in x), false);
     assertEquals((await svc.from('audit_log').select('action').eq('action', 'BACKUP_MANUAL')).data!.length, 1);
-  } finally { await cleanup(); }
+  } finally { await cleanup(since); }
 });
 
 Deno.test('cron: secret wajib, cronHourly membuat schedule hari ini', async () => {
