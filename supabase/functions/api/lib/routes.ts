@@ -1,6 +1,7 @@
 import { AUTH_ROUTES, resolve } from './auth.ts';
 import { selectAll } from './db.ts';
 import { APPROVAL_ROUTES } from './approval.ts';
+import { MONITORING_ROUTES } from './monitoring.ts';
 import { photo } from './photos.ts';
 import { REPAIR_ROUTES } from './repair.ts';
 import { isMasterReady, SCHEDULE_ROUTES } from './schedule.ts';
@@ -33,7 +34,8 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   // Approval
   approvalQueue: r(LOGGED, APPROVAL_ROUTES.approvalQueue), decide: r(LOGGED, APPROVAL_ROUTES.decide),
   // Monitoring
-  dashboard: r(LOGGED), kanban: r(LOGGED), report: r(LOGGED), exportReport: r(LOGGED), lookups: r(LOGGED), changePassword: r(LOGGED, AUTH_ROUTES.changePassword),
+  dashboard: r(LOGGED, MONITORING_ROUTES.dashboard), kanban: r(LOGGED, MONITORING_ROUTES.kanban), report: r(LOGGED, MONITORING_ROUTES.report),
+  exportReport: r(LOGGED, MONITORING_ROUTES.exportReport), lookups: r(LOGGED, MONITORING_ROUTES.lookups), changePassword: r(LOGGED, AUTH_ROUTES.changePassword),
   // Admin
   masterData: r(['ADMIN']), saveAsset: r(['ADMIN']), saveMapping: r(['ADMIN']), savePerson: r(['ADMIN']), saveAccount: r(['ADMIN']),
   resetPassword: r(['ADMIN']), auditLog: r(['ADMIN']), settings: r(['ADMIN']), saveSettings: r(['ADMIN']), saveFonnteToken: r(['ADMIN']),
