@@ -20,5 +20,13 @@ Console browser harus tanpa error di setiap langkah.
 - [ ] Pastikan `system_settings.MIGRATED_AT` ada sebelum merge ke `main`.
 - [ ] Set `APP_URL` ke domain final (bukan URL preview).
 - [ ] Isi token Fonnte hanya pada hari cutover.
-- [ ] Jangan jalankan tes integrasi / `seed()` terhadap project ini (lihat `tests/README.md`).
+- [ ] Jangan pernah jalankan tes integrasi / `seed()` terhadap project ini (lihat `tests/README.md`).
+- [ ] Sebelum run final, verifikasi (query baca-saja) bahwa project tidak memuat data uji: username `admin`/`spv`/`head` di `master_account` dengan nama fixture, aset `AST-DAILY`/`AST-SHIFT`. Bila ada, hapus berdasarkan id persis hanya setelah pemilik mengonfirmasi.
 - [ ] Setelah malam pertama: pastikan ada baris AUTO di log backup.
+
+## Rollback (hanya hari H)
+
+- [ ] Kembalikan `API_URL` di `web/script.js` ke URL Apps Script lama: `https://script.google.com/macros/s/AKfycbzT-yKjvrr41uJCmPMBL2mxhcOw7kwr1EYkaGBMmaXf7aKDTltYIoyt9mUnrKsGD6m2/exec`, lalu push ke `main`.
+- [ ] Nyalakan lagi 3 trigger Apps Script.
+- [ ] Matikan cron Supabase: `select cron.unschedule(jobname) from cron.job where jobname like 'api-cron-%';`
+- [ ] Data yang terlanjur dicatat di Supabase hari itu dicatat manual oleh pemilik. Setelah hari H tidak ada rollback; masalah diperbaiki di Supabase.
