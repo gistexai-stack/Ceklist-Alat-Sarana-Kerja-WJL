@@ -1,4 +1,4 @@
-import { db, insertRows, selectAll, updateWhere } from './db.ts';
+import { db, selectAll, updateWhere } from './db.ts';
 import { notify } from './notify.ts';
 import { savePhoto, trashPhotos } from './photos.ts';
 import { setSetting, settings } from './settings.ts';
@@ -84,30 +84,6 @@ export function picsOfAsset(asset: Row, assets: Row[]): string[] {
   if (!asset.pic_group) return ids(asset.pic_ids);
   const all = assets.filter((a) => a.pic_group === asset.pic_group && a.active === 'TRUE').flatMap((a) => ids(a.pic_ids));
   return all.filter((x, i) => all.indexOf(x) === i);
-}
-
-// ---- Tahap 2: kasus temuan ----
-export async function logRepair(c: Row, it: Row, event: string, note: string, nowStr: string, actor?: string): Promise<void> {
-  await insertRows('repair_log', [{ log_id: uid('RL'), case_id: c.case_id, case_item_id: it.case_item_id, event, cycle_no: c.cycle_no,
-    actor_name: actor || it.claimed_by_name_snapshot, repair_action: it.repair_action, started_at: it.started_at, completed_at: it.completed_at,
-    after_photo_file_id: it.after_photo_file_id, note: note || '', created_at: nowStr }]);
-}
-export function resetItem(it: Row): void {
-  Object.assign(it, { status: 'OPEN', claimed_by_person_id: '', claimed_by_name_snapshot: '', repair_action: '', started_at: '', completed_at: '', after_photo_file_id: '' });
-}
-/** Status kasus dihitung dari item (mengubah `c` di tempat; penyimpanan oleh pemanggil). Return 'TO_SPV' bila semua item DONE. */
-export async function recomputeCase(c: Row): Promise<string | null> {
-  if (c.status === 'SELESAI') return null;
-  const its = await selectAll('repair_item', (q) => q.eq('case_id', c.case_id));
-  const waiting = c.status === 'MENUNGGU_SPV' || c.status === 'MENUNGGU_HEAD';
-  if (its.length && its.every((i) => i.status === 'DONE')) {
-    if (waiting) return null;
-    c.status = 'MENUNGGU_SPV';
-    return 'TO_SPV';
-  }
-  if (waiting) c.cycle_no = String(num(c.cycle_no) + 1);
-  c.status = its.some((i) => i.status !== 'OPEN') ? 'SEDANG_DIPERBAIKI' : 'PERLU_PERBAIKAN';
-  return null;
 }
 
 // ---- Tahap 1: checklist ----

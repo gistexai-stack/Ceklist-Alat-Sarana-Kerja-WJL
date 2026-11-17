@@ -1,6 +1,8 @@
 import { AUTH_ROUTES, resolve } from './auth.ts';
 import { selectAll } from './db.ts';
+import { APPROVAL_ROUTES } from './approval.ts';
 import { photo } from './photos.ts';
+import { REPAIR_ROUTES } from './repair.ts';
 import { isMasterReady, SCHEDULE_ROUTES } from './schedule.ts';
 import type { ApiResult, RouteFn, Session } from './types.ts';
 import { ALL, err, fail, GUEST, LOGGED, UserError } from './util.ts';
@@ -26,10 +28,10 @@ export const ROUTES: Record<string, { roles: string[] | null; fn: RouteFn }> = {
   submitChecklist: r(['PIC', 'UTILITY'], SCHEDULE_ROUTES.submitChecklist),
   todaySchedules: r(LOGGED, SCHEDULE_ROUTES.todaySchedules), checklistDetail: r(LOGGED, SCHEDULE_ROUTES.checklistDetail),
   // Perbaikan
-  repairQueue: r(ALL), claimItem: r(GUEST), completeItem: r(GUEST), releaseItem: r(['ADMIN', 'SPV']),
-  caseDetail: r(ALL), caseList: r(LOGGED), photo: r(ALL, photo),
+  repairQueue: r(ALL, REPAIR_ROUTES.repairQueue), claimItem: r(GUEST, REPAIR_ROUTES.claimItem), completeItem: r(GUEST, REPAIR_ROUTES.completeItem),
+  releaseItem: r(['ADMIN', 'SPV'], REPAIR_ROUTES.releaseItem), caseDetail: r(ALL, REPAIR_ROUTES.caseDetail), caseList: r(LOGGED, REPAIR_ROUTES.caseList), photo: r(ALL, photo),
   // Approval
-  approvalQueue: r(LOGGED), decide: r(LOGGED),
+  approvalQueue: r(LOGGED, APPROVAL_ROUTES.approvalQueue), decide: r(LOGGED, APPROVAL_ROUTES.decide),
   // Monitoring
   dashboard: r(LOGGED), kanban: r(LOGGED), report: r(LOGGED), exportReport: r(LOGGED), lookups: r(LOGGED), changePassword: r(LOGGED, AUTH_ROUTES.changePassword),
   // Admin
